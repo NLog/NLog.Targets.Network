@@ -32,6 +32,8 @@
 // THE POSSIBILITY OF SUCH DAMAGE.
 // 
 
+#if DEFUNCT
+
 using System;
 using System.IO;
 using System.Text;
@@ -43,48 +45,61 @@ using NLog.Internal;
 using System.Net;
 using System.Net.Sockets;
 
-namespace NLog.Appenders
-{
-    [Appender("NLogViewer")]
-    public sealed class NLogViewerAppender: Appender
-    {
-        private Socket _socket;
-        private IPEndPoint _endpoint = null;
+using NLog.Config;
 
+namespace NLog.Targets
+{
+    /// <summary>
+    /// Sends logging messages to the remote instance of NLog Viewer. 
+    /// NOT OPERATIONAL YET.
+    /// </summary>
+    // [Target("NLogViewer", IgnoresLayout=true)]
+    public sealed class NLogViewerTarget: NetworkTarget
+    {
         private bool _includeCallSite = false;
         private bool _includeSourceInfo = false;
         private string _appInfo;
-        private int _port;
 
-        public NLogViewerAppender()
+        /// <summary>
+        /// Creates a new instance of the <see cref="NLogViewerTarget"/> 
+        /// and initializes default property values.
+        /// </summary>
+        public NLogViewerTarget()
         {
             _appInfo = AppDomain.CurrentDomain.FriendlyName;
         }
 
-        public int Port
-        {
-            get { return _port; }
-            set { _port = value; }
-        }
-
+        /// <summary>
+        /// The AppInfo field. By default it's the friendly name of the current AppDomain.
+        /// </summary>
         public string AppInfo
         {
             get { return _appInfo; }
             set { _appInfo = value; }
         }
 
+        /// <summary>
+        /// Include call site (class and method name) in the information sent over the network.
+        /// </summary>
         public bool IncludeCallSite
         {
             get { return _includeCallSite; }
             set { _includeCallSite = value; }
         }
 
+        /// <summary>
+        /// Include source info (file name and line number) in the information sent over the network.
+        /// </summary>
         public bool IncludeSourceInfo
         {
             get { return _includeSourceInfo; }
             set { _includeSourceInfo = value; }
         }
 
+        /// <summary>
+        /// Returns the value indicating whether call site and/or source information should be gathered.
+        /// </summary>
+        /// <returns>2 - when IncludeSourceInfo is set, 1 when IncludeCallSite is set, 0 otherwise</returns>
         protected internal override int NeedsStackTrace()
         {
             if (IncludeSourceInfo)
@@ -94,7 +109,10 @@ namespace NLog.Appenders
             return 0;
         }
 
-
+        /// <summary>
+        /// Constructs an XML packet including the logging event information and sends it over the network.
+        /// </summary>
+        /// <param name="ev">Logging event information.</param>
         protected internal override void Append(LogEventInfo ev)
         {
             StringBuilder sb = new StringBuilder(512);
@@ -131,22 +149,9 @@ namespace NLog.Appenders
             }
             xtw.WriteEndElement();
             xtw.Flush();
-            byte[] data = System.Text.Encoding.UTF8.GetBytes(sw.ToString());
-
-            if (data.Length <= 64000)
-            {
-                SendToViewer(data);
-            }
-        }
-
-        private void SendToViewer(byte[] buffer)
-        {
-            if (_socket == null)
-            {
-                _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                _endpoint = new IPEndPoint(IPAddress.Loopback, 40000);
-            }
-            _socket.SendTo(buffer, _endpoint);
+            NetworkSend(AddressLayout.GetFormattedMessage(ev), sw.ToString());
         }
     }
 }
+
+#endif
