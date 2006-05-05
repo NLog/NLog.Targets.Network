@@ -36,7 +36,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
-namespace NLog.Internal
+namespace NLog.Internal.NetworkSenders
 {
     /// <summary>
     /// Sends messages over the network as UDP datagrams.

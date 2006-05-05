@@ -33,7 +33,7 @@
 
 using System;
 
-namespace NLog.Internal
+namespace NLog.Internal.NetworkSenders
 {
     /// <summary>
     /// Sends one-way messages over the HTTP protocol.
