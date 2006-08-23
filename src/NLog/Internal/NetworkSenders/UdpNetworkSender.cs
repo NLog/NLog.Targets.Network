@@ -63,8 +63,8 @@ namespace NLog.Internal.NetworkSenders
 #endif
             int port = parsedUri.Port;
 
-            _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             _endpoint = new IPEndPoint(host.AddressList[0], port);
+            _socket = new Socket(_endpoint.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
         }
 
         /// <summary>
