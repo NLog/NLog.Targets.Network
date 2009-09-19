@@ -144,7 +144,10 @@ namespace NLog.LayoutRenderers
                 Type type = methodBase.DeclaringType;
 
                 xtw.WriteStartElement("log4j:locationInfo");
-                xtw.WriteAttributeString("class", type.FullName);
+                if (type != null)
+                {
+                    xtw.WriteAttributeString("class", type.FullName);
+                }
                 xtw.WriteAttributeString("method", methodBase.ToString());
                 if (this.IncludeSourceInfo)
                 {
