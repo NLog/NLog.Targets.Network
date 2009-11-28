@@ -83,6 +83,7 @@ namespace NLog.Targets
         /// <summary>
         /// Gets or sets a value indicating whether to include NLog-specific extensions to log4j schema.
         /// </summary>
+        /// <docgen category="" order="10" />
         public bool IncludeNLogData
         {
             get { return this.Renderer.IncludeNLogData; }
@@ -92,6 +93,7 @@ namespace NLog.Targets
         /// <summary>
         /// Gets or sets the AppInfo field. By default it's the friendly name of the current AppDomain.
         /// </summary>
+        /// <docgen category="Detail Level" order="10" />
         public string AppInfo
         {
             get { return this.Renderer.AppInfo; }
@@ -102,6 +104,7 @@ namespace NLog.Targets
         /// <summary>
         /// Gets or sets a value indicating whether to include call site (class and method name) in the information sent over the network.
         /// </summary>
+        /// <docgen category="Detail Level" order="10" />
         public bool IncludeCallSite
         {
             get { return this.Renderer.IncludeCallSite; }
@@ -111,6 +114,7 @@ namespace NLog.Targets
         /// <summary>
         /// Gets or sets a value indicating whether to include source info (file name and line number) in the information sent over the network.
         /// </summary>
+        /// <docgen category="Detail Level" order="10" />
         public bool IncludeSourceInfo
         {
             get { return this.Renderer.IncludeSourceInfo; }
@@ -121,6 +125,7 @@ namespace NLog.Targets
         /// <summary>
         /// Gets or sets a value indicating whether to include <see cref="MappedDiagnosticsContext"/> dictionary contents.
         /// </summary>
+        /// <docgen category="Detail Level" order="10" />
         public bool IncludeMdc
         {
             get { return this.Renderer.IncludeMDC; }
@@ -130,6 +135,7 @@ namespace NLog.Targets
         /// <summary>
         /// Gets or sets a value indicating whether to include <see cref="NestedDiagnosticsContext"/> stack contents.
         /// </summary>
+        /// <docgen category="Detail Level" order="10" />
         public bool IncludeNdc
         {
             get { return this.Renderer.IncludeNDC; }
@@ -140,6 +146,7 @@ namespace NLog.Targets
         /// Gets the collection of parameters. Each parameter contains a mapping
         /// between NLog layout and a named parameter.
         /// </summary>
+        /// <docgen category="Detail Level" order="10" />
         [ArrayParameter(typeof(NLogViewerParameterInfo), "parameter")]
         public ICollection<NLogViewerParameterInfo> Parameters { get; private set; }
 
