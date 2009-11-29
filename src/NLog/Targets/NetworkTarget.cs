@@ -136,7 +136,7 @@ namespace NLog.Targets
         /// <summary>
         /// Gets or sets a value indicating whether to append newline at the end of log message.
         /// </summary>
-        /// <docgen category="Layout" order="10" />
+        /// <docgen category="Layout Options" order="10" />
         [DefaultValue(false)]
         public bool NewLine { get; set; }
 
@@ -157,7 +157,7 @@ namespace NLog.Targets
         /// <summary>
         /// Gets or sets the encoding to be used.
         /// </summary>
-        /// <docgen category="Layout" order="10" />
+        /// <docgen category="Layout Options" order="10" />
         [DefaultValue("utf-8")]
         public Encoding Encoding { get; set; }
 

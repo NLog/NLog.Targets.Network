@@ -82,6 +82,7 @@ namespace NLog.LayoutRenderers
         /// <summary>
         /// Gets or sets a value indicating whether the XML should use spaces for indentation.
         /// </summary>
+        /// <docgen category="Layout Options" order="10" />
         public bool IndentXml { get; set; }
 
         /// <summary>
