@@ -31,14 +31,14 @@
 // THE POSSIBILITY OF SUCH DAMAGE.
 // 
 
-using System.Collections.Generic;
-using NLog.Config;
-using NLog.Contexts;
-using NLog.LayoutRenderers;
-using NLog.Layouts;
-
 namespace NLog.Targets
 {
+    using System.Collections.Generic;
+    using NLog.Config;
+    using NLog.Contexts;
+    using NLog.LayoutRenderers;
+    using NLog.Layouts;
+
     /// <summary>
     /// Sends logging messages to the remote instance of NLog Viewer. 
     /// </summary>
@@ -151,8 +151,17 @@ namespace NLog.Targets
         /// </summary>
         /// <docgen category="Detail Level" order="10" />
         [ArrayParameter(typeof(NLogViewerParameterInfo), "parameter")]
-        public ICollection<NLogViewerParameterInfo> Parameters { get; private set; }
+        public IList<NLogViewerParameterInfo> Parameters { get; private set; }
 
+        /// <summary>
+        /// Gets the layout renderer which produces Log4j-compatible XML events.
+        /// </summary>
+        public Log4JXmlEventLayoutRenderer Renderer
+        {
+            get { return this.Layout.Renderer; }
+        }
+
+#if !NET_CF
         /// <summary>
         /// Gets or sets the instance of <see cref="Log4JXmlEventLayout"/> that is used to format log messages.
         /// </summary>
@@ -160,33 +169,6 @@ namespace NLog.Targets
         {
             get { return base.Layout as Log4JXmlEventLayout; }
             set { base.Layout = value; }
-        }
-
-        private Log4JXmlEventLayoutRenderer Renderer
-        {
-            get { return this.Layout.Renderer; }
-        }
-
-#if !NET_CF
-        /// <summary>
-        /// Returns the value indicating whether call site and/or source information should be gathered.
-        /// </summary>
-        /// <returns>2 - when IncludeSourceInfo is set, 1 when IncludeCallSite is set, 0 otherwise.</returns>
-        public override StackTraceUsage GetStackTraceUsage()
-        {
-#if !SILVERLIGHT
-            if (this.IncludeSourceInfo)
-            {
-                return StackTraceUsage.WithSource;
-            }
-#endif
-
-            if (this.IncludeCallSite)
-            {
-                return StackTraceUsage.WithoutSource;
-            }
-
-            return base.GetStackTraceUsage();
         }
 #endif
     }
