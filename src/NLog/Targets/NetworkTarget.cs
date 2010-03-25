@@ -123,7 +123,7 @@ namespace NLog.Targets
         /// <remarks>
         /// For HTTP Support use the WebService target.
         /// </remarks>
-        /// <docgen category="Connection Options" order="10" />
+        /// <docgen category='Connection Options' order='10' />
         public Layout Address { get; set; }
 
         /// <summary>
@@ -143,7 +143,7 @@ namespace NLog.Targets
         /// <summary>
         /// Gets or sets the maximum message size in bytes.
         /// </summary>
-        /// <docgen category="Advanced Options" order="10" />
+        /// <docgen category='Layout Options' order='10' />
         [DefaultValue(65000)]
         public int MaxMessageSize { get; set; }
 
@@ -151,7 +151,7 @@ namespace NLog.Targets
         /// Gets or sets the action that should be taken if the message is larger than
         /// maxMessageSize.
         /// </summary>
-        /// <docgen category="Advanced Options" order="10" />
+        /// <docgen category='Layout Options' order='10' />
         public OverflowAction OnOverflow { get; set; }
 
         /// <summary>
