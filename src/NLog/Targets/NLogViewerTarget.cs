@@ -31,8 +31,6 @@
 // THE POSSIBILITY OF SUCH DAMAGE.
 // 
 
-#if !WINDOWS_PHONE
-
 namespace NLog.Targets
 {
     using System.Collections.Generic;
@@ -175,5 +173,3 @@ namespace NLog.Targets
 #endif
     }
 }
-
-#endif
