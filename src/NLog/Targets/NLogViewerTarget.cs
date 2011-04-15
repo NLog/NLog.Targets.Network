@@ -33,6 +33,7 @@
 
 namespace NLog.Targets
 {
+    using System;
     using System.Collections.Generic;
     using NLog.Config;
     using NLog.LayoutRenderers;
@@ -161,15 +162,19 @@ namespace NLog.Targets
             get { return this.Layout.Renderer; }
         }
 
-#if !NET_CF
         /// <summary>
         /// Gets or sets the instance of <see cref="Log4JXmlEventLayout"/> that is used to format log messages.
         /// </summary>
-        protected new Log4JXmlEventLayout Layout
+        public override Layout Layout
         {
-            get { return base.Layout as Log4JXmlEventLayout; }
-            set { base.Layout = value; }
+            get { return base.Layout; }
+            set
+            {
+                if (value is Log4JXmlEventLayout)
+                {
+                    base.Layout = value;
+                }
+            }
         }
-#endif
     }
 }
