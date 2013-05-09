@@ -64,7 +64,7 @@ namespace NLog.LayoutRenderers
         public Log4JXmlEventLayoutRenderer() : this(AppDomainWrapper.CurrentDomain)
         {
         }
-        
+
         /// <summary>
         /// Initializes a new instance of the <see cref="Log4JXmlEventLayoutRenderer" /> class.
         /// </summary>
@@ -77,11 +77,11 @@ namespace NLog.LayoutRenderers
 #elif SILVERLIGHT
             this.AppInfo = "Silverlight Application";
 #else
-             this.AppInfo = string.Format(
-                 CultureInfo.InvariantCulture,
-                 "{0}({1})", 
-                 appDomain.FriendlyName, 
-                 ThreadIDHelper.Instance.CurrentProcessID);
+            this.AppInfo = string.Format(
+                CultureInfo.InvariantCulture,
+                "{0}({1})",
+                appDomain.FriendlyName,
+                ThreadIDHelper.Instance.CurrentProcessID);
 #endif
             this.Parameters = new List<NLogViewerParameterInfo>();
         }
@@ -256,7 +256,7 @@ namespace NLog.LayoutRenderers
                             }
                             xtw.WriteEndElement();
                         }
-                        
+
                     }
                 }
 #endif
