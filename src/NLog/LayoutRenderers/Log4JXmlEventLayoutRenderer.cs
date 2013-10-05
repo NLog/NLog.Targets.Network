@@ -83,6 +83,8 @@ namespace NLog.LayoutRenderers
                 ThreadIDHelper.Instance.CurrentProcessID);
             this.Parameters = new List<NLogViewerParameterInfo>();
 #endif
+
+            this.Parameters = new List<NLogViewerParameterInfo>();
         }
 
         /// <summary>
