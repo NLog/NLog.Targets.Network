@@ -124,14 +124,14 @@ namespace NLog.Targets
         /// <summary>
         /// Gets or sets a value indicating whether to keep connection open whenever possible.
         /// </summary>
-        /// <docgen category="Connection Options" order="10" />
+        /// <docgen category='Connection Options' order='10' />
         [DefaultValue(true)]
         public bool KeepConnection { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether to append newline at the end of log message.
         /// </summary>
-        /// <docgen category="Layout Options" order="10" />
+        /// <docgen category='Layout Options' order='10' />
         [DefaultValue(false)]
         public bool NewLine { get; set; }
 
@@ -165,7 +165,7 @@ namespace NLog.Targets
         /// <summary>
         /// Gets or sets the encoding to be used.
         /// </summary>
-        /// <docgen category="Layout Options" order="10" />
+        /// <docgen category='Layout Options' order='10' />
         [DefaultValue("utf-8")]
         public Encoding Encoding { get; set; }
 
@@ -181,13 +181,13 @@ namespace NLog.Targets
 
             AsyncContinuation continuation =
                 ex =>
+                {
+                    // ignore exception
+                    if (Interlocked.Decrement(ref remainingCount) == 0)
                     {
-                        // ignore exception
-                        if (Interlocked.Decrement(ref remainingCount) == 0)
-                        {
-                            asyncContinuation(null);
-                        }
-                    };
+                        asyncContinuation(null);
+                    }
+                };
 
             lock (this.openNetworkSenders)
             {
@@ -215,7 +215,7 @@ namespace NLog.Targets
         protected override void CloseTarget()
         {
             base.CloseTarget();
-            
+
             lock (this.openNetworkSenders)
             {
                 foreach (var openSender in this.openNetworkSenders)
@@ -242,18 +242,18 @@ namespace NLog.Targets
                 NetworkSender sender = this.GetCachedNetworkSender(address);
 
                 this.ChunkedSend(
-                    sender, 
+                    sender,
                     bytes,
                     ex =>
+                    {
+                        if (ex != null)
                         {
-                            if (ex != null)
-                            {
-                                InternalLogger.Error("Error when sending {0}", ex);
-                                this.ReleaseCachedConnection(sender);
-                            }
+                            InternalLogger.Error("Error when sending {0}", ex);
+                            this.ReleaseCachedConnection(sender);
+                        }
 
-                            logEvent.Continuation(ex);
-                        });
+                        logEvent.Continuation(ex);
+                    });
             }
             else
             {
@@ -267,20 +267,20 @@ namespace NLog.Targets
                         sender,
                         bytes,
                         ex =>
+                        {
+                            lock (this.openNetworkSenders)
                             {
-                                lock (this.openNetworkSenders)
-                                {
-                                    this.openNetworkSenders.Remove(sender);
-                                }
+                                this.openNetworkSenders.Remove(sender);
+                            }
 
-                                if (ex != null)
-                                {
-                                    InternalLogger.Error("Error when sending {0}", ex);
-                                }
+                            if (ex != null)
+                            {
+                                InternalLogger.Error("Error when sending {0}", ex);
+                            }
 
-                                sender.Close(ex2 => { });
-                                logEvent.Continuation(ex);
-                            });
+                            sender.Close(ex2 => { });
+                            logEvent.Continuation(ex);
+                        });
                 }
             }
         }
@@ -386,43 +386,43 @@ namespace NLog.Targets
             AsyncContinuation sendNextChunk = null;
 
             sendNextChunk = ex =>
+            {
+                if (ex != null)
                 {
-                    if (ex != null)
-                    {
-                        continuation(ex);
-                        return;
-                    }
+                    continuation(ex);
+                    return;
+                }
 
-                    if (tosend <= 0)
+                if (tosend <= 0)
+                {
+                    continuation(null);
+                    return;
+                }
+
+                int chunksize = tosend;
+                if (chunksize > this.MaxMessageSize)
+                {
+                    if (this.OnOverflow == NetworkTargetOverflowAction.Discard)
                     {
                         continuation(null);
                         return;
                     }
 
-                    int chunksize = tosend;
-                    if (chunksize > this.MaxMessageSize)
+                    if (this.OnOverflow == NetworkTargetOverflowAction.Error)
                     {
-                        if (this.OnOverflow == NetworkTargetOverflowAction.Discard)
-                        {
-                            continuation(null);
-                            return;
-                        }
-
-                        if (this.OnOverflow == NetworkTargetOverflowAction.Error)
-                        {
-                            continuation(new OverflowException("Attempted to send a message larger than MaxMessageSize (" + this.MaxMessageSize + "). Actual size was: " + buffer.Length + ". Adjust OnOverflow and MaxMessageSize parameters accordingly."));
-                            return;
-                        }
-
-                        chunksize = this.MaxMessageSize;
+                        continuation(new OverflowException("Attempted to send a message larger than MaxMessageSize (" + this.MaxMessageSize + "). Actual size was: " + buffer.Length + ". Adjust OnOverflow and MaxMessageSize parameters accordingly."));
+                        return;
                     }
 
-                    int pos0 = pos;
-                    tosend -= chunksize;
-                    pos += chunksize;
+                    chunksize = this.MaxMessageSize;
+                }
 
-                    sender.Send(buffer, pos0, chunksize, sendNextChunk);
-                };
+                int pos0 = pos;
+                tosend -= chunksize;
+                pos += chunksize;
+
+                sender.Send(buffer, pos0, chunksize, sendNextChunk);
+            };
 
             sendNextChunk(null);
         }
