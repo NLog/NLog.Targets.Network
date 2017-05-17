@@ -42,7 +42,7 @@ namespace NLog.Layouts
     /// This layout is not meant to be used explicitly. Instead you can use ${log4jxmlevent} layout renderer.
     /// </remarks>
     [Layout("Log4JXmlEventLayout")]
-    public class Log4JXmlEventLayout : Layout
+    public class Log4JXmlEventLayout : Layout, IIncludeContext
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="Log4JXmlEventLayout" /> class.
@@ -63,19 +63,33 @@ namespace NLog.Layouts
         /// <docgen category='Payload Options' order='10' />
         public bool IncludeMdc { get { return Renderer.IncludeMdc; } set { Renderer.IncludeMdc = value; } }
 
-#if !SILVERLIGHT
-        /// <summary>
-        /// Gets or sets a value indicating whether to include contents of the <see cref="MappedDiagnosticsLogicalContext"/> dictionary.
-        /// </summary>
-        /// <docgen category='Payload Options' order='10' />
-        public bool IncludeMdlc { get { return Renderer.IncludeMdlc; } set { Renderer.IncludeMdlc = value; } }
-#endif
-
         /// <summary>
         /// Gets or sets the option to include all properties from the log events
         /// </summary>
         /// <docgen category='Payload Options' order='10' />
         public bool IncludeAllProperties { get { return Renderer.IncludeAllProperties; } set { Renderer.IncludeAllProperties = value; } }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether to include contents of the <see cref="NestedDiagnosticsContext"/> stack.
+        /// </summary>
+        /// <docgen category='Payload Options' order='10' />
+        public bool IncludeNdc { get { return Renderer.IncludeNdc; } set { Renderer.IncludeNdc = value; } }
+
+#if !SILVERLIGHT
+
+        /// <summary>
+        /// Gets or sets a value indicating whether to include contents of the <see cref="MappedDiagnosticsLogicalContext"/> dictionary.
+        /// </summary>
+        /// <docgen category='Payload Options' order='10' />
+        public bool IncludeMdlc { get { return Renderer.IncludeMdlc; } set { Renderer.IncludeMdlc = value; } }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether to include contents of the <see cref="NestedDiagnosticsLogicalContext"/> stack.
+        /// </summary>
+        /// <docgen category='Payload Options' order='10' />
+        public bool IncludeNdlc { get { return Renderer.IncludeNdlc; } set { Renderer.IncludeNdlc = value; } }
+
+#endif
 
         /// <summary>
         /// Renders the layout for the specified logging event by invoking layout renderers.
