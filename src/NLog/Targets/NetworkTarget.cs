@@ -490,7 +490,6 @@ namespace NLog.Targets
                 var networkSender = senderNode.Value;
                 lock (_openNetworkSenders)
                 {
-
                     if (TryRemove(_openNetworkSenders, senderNode))
                     {
                         // only remove it once
@@ -515,54 +514,66 @@ namespace NLog.Targets
         private void ChunkedSend(NetworkSender sender, byte[] buffer, AsyncContinuation continuation)
         {
             int tosend = buffer.Length;
-            int pos = 0;
-
-            AsyncContinuation sendNextChunk = null;
-
-
-
-            sendNextChunk = ex =>
+            if (tosend <= MaxMessageSize)
             {
-
-                if (ex != null)
-                {
-                    continuation(ex);
-                    return;
-                }
-                InternalLogger.Trace("Sending chunk, position: {0}, length: {1}", pos, tosend);
+                // Chunking is not needed, no need to perform delegate capture
+                InternalLogger.Trace("Sending chunk, position: {0}, length: {1}", 0, tosend);
                 if (tosend <= 0)
                 {
                     continuation(null);
                     return;
                 }
 
-                int chunksize = tosend;
-                if (chunksize > MaxMessageSize)
+                sender.Send(buffer, 0, tosend, continuation);
+            }
+            else
+            {
+                int pos = 0;
+
+                AsyncContinuation sendNextChunk = null;
+
+                sendNextChunk = ex =>
                 {
-                    if (OnOverflow == NetworkTargetOverflowAction.Discard)
+                    if (ex != null)
                     {
-                        InternalLogger.Trace("discard because chunksize > this.MaxMessageSize");
+                        continuation(ex);
+                        return;
+                    }
+                    InternalLogger.Trace("Sending chunk, position: {0}, length: {1}", pos, tosend);
+                    if (tosend <= 0)
+                    {
                         continuation(null);
                         return;
                     }
 
-                    if (OnOverflow == NetworkTargetOverflowAction.Error)
+                    int chunksize = tosend;
+                    if (chunksize > MaxMessageSize)
                     {
-                        continuation(new OverflowException($"Attempted to send a message larger than MaxMessageSize ({MaxMessageSize}). Actual size was: {buffer.Length}. Adjust OnOverflow and MaxMessageSize parameters accordingly."));
-                        return;
+                        if (OnOverflow == NetworkTargetOverflowAction.Discard)
+                        {
+                            InternalLogger.Trace("discard because chunksize > this.MaxMessageSize");
+                            continuation(null);
+                            return;
+                        }
+
+                        if (OnOverflow == NetworkTargetOverflowAction.Error)
+                        {
+                            continuation(new OverflowException($"Attempted to send a message larger than MaxMessageSize ({MaxMessageSize}). Actual size was: {buffer.Length}. Adjust OnOverflow and MaxMessageSize parameters accordingly."));
+                            return;
+                        }
+
+                        chunksize = MaxMessageSize;
                     }
 
-                    chunksize = MaxMessageSize;
-                }
+                    int pos0 = pos;
+                    tosend -= chunksize;
+                    pos += chunksize;
 
-                int pos0 = pos;
-                tosend -= chunksize;
-                pos += chunksize;
+                    sender.Send(buffer, pos0, chunksize, sendNextChunk);
+                };
 
-                sender.Send(buffer, pos0, chunksize, sendNextChunk);
-            };
-
-            sendNextChunk(null);
+                sendNextChunk(null);
+            }
         }
     }
 }
