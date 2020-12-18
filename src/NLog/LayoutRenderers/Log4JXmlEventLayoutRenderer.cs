@@ -183,13 +183,13 @@ namespace NLog.LayoutRenderers
         public bool IncludeNdlc { get => IncludeScopeOperationStates; set => IncludeScopeOperationStates = value; }
 
         /// <summary>
-        /// Gets or sets a value indicating whether to include contents of the <see cref="ScopeContext"/> properties-dictionary.
+        /// Gets or sets whether to include the contents of the <see cref="ScopeContext"/> properties-dictionary.
         /// </summary>
         /// <docgen category='Payload Options' order='10' />
         public bool IncludeScopeProperties { get; set; }
 
         /// <summary>
-        /// Gets or sets a value indicating whether to include contents of the <see cref="ScopeContext"/> operation-states-stack.
+        /// Gets or sets whether to include the contents of the <see cref="ScopeContext"/> operation-call-stack.
         /// </summary>
         /// <docgen category='Payload Options' order='10' />
         public bool IncludeScopeOperationStates { get; set; }
@@ -302,7 +302,7 @@ namespace NLog.LayoutRenderers
                     }
                 }
 
-                AppendNdc(xtw, logEvent);
+                AppendScopeContextOperationStates(xtw, logEvent);
 
                 if (includeNLogCallsite)
                 {
@@ -313,7 +313,7 @@ namespace NLog.LayoutRenderers
 
                 AppendMdc(xtw);
 
-                AppendScopeProperties(xtw);
+                AppendScopeContextProperties(xtw);
 
                 if (IncludeEventProperties)
                 {
@@ -347,7 +347,7 @@ namespace NLog.LayoutRenderers
             }
         }
 
-        private void AppendScopeProperties(XmlWriter xtw)
+        private void AppendScopeContextProperties(XmlWriter xtw)
         {
             if (IncludeScopeProperties)
             {
@@ -372,7 +372,7 @@ namespace NLog.LayoutRenderers
             }
         }
 
-        private void AppendNdc(XmlWriter xtw, LogEventInfo logEvent)
+        private void AppendScopeContextOperationStates(XmlWriter xtw, LogEventInfo logEvent)
         {
             string ndcContent = null;
             if (IncludeNdc)
