@@ -33,19 +33,19 @@
 
 #if !NETSTANDARD1_3 && !NETSTANDARD1_5
 
-namespace NLog.LayoutRenderers
+namespace NLog.Internal
 {
     using System.Net.NetworkInformation;
 
     /// <summary>
     /// Retrieve network interfaces
     /// </summary>
-    internal interface INetworkInterfaceRetriever
+    internal class NetworkInterfaceRetriever : INetworkInterfaceRetriever
     {
         /// <summary>
         /// Retrieve network interfaces
         /// </summary>
-        NetworkInterface[] AllNetworkInterfaces { get; }
+        public NetworkInterface[] AllNetworkInterfaces => NetworkInterface.GetAllNetworkInterfaces();
     }
 }
 #endif
