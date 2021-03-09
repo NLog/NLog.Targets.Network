@@ -210,8 +210,7 @@ namespace NLog.LayoutRenderers
         /// Gets or sets the stack separator for <see cref="ScopeContext"/> operation-call-stack.
         /// </summary>
         /// <docgen category='Payload Options' order='10' />
-        [DefaultValue(" ")]
-        public string ScopeNestedStateSeparator
+        public Layout ScopeNestedStateSeparator
         {
             get => _scopeNestedLayoutRenderer.Separator;
             set => _scopeNestedLayoutRenderer.Separator = value;
@@ -223,7 +222,7 @@ namespace NLog.LayoutRenderers
         /// <docgen category='Payload Options' order='10' />
         [DefaultValue(" ")]
         [Obsolete("Replaced by ScopeNestedStateSeparator. Marked obsolete on NLog 5.0")]
-        public string NdlcItemSeparator { get => ScopeNestedStateSeparator; set => ScopeNestedStateSeparator = value; }
+        public string NdlcItemSeparator { get => (ScopeNestedStateSeparator as SimpleLayout)?.OriginalText; set => ScopeNestedStateSeparator = new SimpleLayout(value); }
 
         /// <summary>
         /// Gets or sets the option to include all properties from the log events
@@ -244,11 +243,7 @@ namespace NLog.LayoutRenderers
         /// <docgen category='Payload Options' order='10' />
         [Obsolete("Replaced by ScopeNestedStateSeparator. Marked obsolete on NLog 5.0")]
         [DefaultValue(" ")]
-        public string NdcItemSeparator
-        {
-            get => _scopeNestedLayoutRenderer.Separator;
-            set => _scopeNestedLayoutRenderer.Separator = value;
-        }
+        public string NdcItemSeparator { get => (ScopeNestedStateSeparator as SimpleLayout)?.OriginalText; set => ScopeNestedStateSeparator = new SimpleLayout(value); }
 
         /// <summary>
         /// Gets or sets the log4j:event logger-xml-attribute (Default ${logger})
