@@ -35,7 +35,6 @@ namespace NLog.LayoutRenderers
 {
     using System;
     using System.Collections.Generic;
-    using System.ComponentModel;
     using System.Globalization;
     using System.Reflection;
     using System.Text;
@@ -132,7 +131,6 @@ namespace NLog.LayoutRenderers
         /// Gets or sets a value indicating whether to include NLog-specific extensions to log4j schema.
         /// </summary>
         /// <docgen category='Payload Options' order='10' />
-        [DefaultValue(false)]
         public bool IncludeNLogData { get; set; }
 
         /// <summary>
@@ -208,7 +206,6 @@ namespace NLog.LayoutRenderers
         /// Gets or sets the stack separator for log4j:NDC in output from <see cref="ScopeContext"/> nested context.
         /// </summary>
         /// <docgen category='Payload Options' order='10' />
-        [DefaultValue(" ")]
         public string ScopeNestedSeparator
         {
             get => _scopeNestedLayoutRenderer.Separator;
@@ -219,7 +216,6 @@ namespace NLog.LayoutRenderers
         /// Gets or sets the stack separator for log4j:NDC in output from <see cref="ScopeContext"/> nested context.
         /// </summary>
         /// <docgen category='Payload Options' order='10' />
-        [DefaultValue(" ")]
         [Obsolete("Replaced by NdcItemSeparator. Marked obsolete on NLog 5.0")]
         public string NdlcItemSeparator { get => ScopeNestedSeparator; set => ScopeNestedSeparator = value; }
 
@@ -240,7 +236,6 @@ namespace NLog.LayoutRenderers
         /// Gets or sets the stack separator for log4j:NDC in output from <see cref="ScopeContext"/> nested context.
         /// </summary>
         /// <docgen category='Payload Options' order='10' />
-        [DefaultValue(" ")]
         public string NdcItemSeparator { get => ScopeNestedSeparator; set => ScopeNestedSeparator = value; }
 
         /// <summary>
