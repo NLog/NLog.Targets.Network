@@ -1,5 +1,5 @@
 ﻿// 
-// Copyright (c) 2004-2020 Jaroslaw Kowalski <jaak@jkowalski.net>, Kim Christensen, Julian Verdurmen
+// Copyright (c) 2004-2024 Jaroslaw Kowalski <jaak@jkowalski.net>, Kim Christensen, Julian Verdurmen
 // 
 // All rights reserved.
 // 
@@ -49,7 +49,7 @@ namespace NLog.LayoutRenderers
     /// </summary>
     /// <remarks>
     /// Skips loopback-adapters and tunnel-interfaces. Skips devices without any MAC-address
-    /// 
+    ///
     /// <a href="https://github.com/NLog/NLog/wiki/Local-IP-Address-Layout-Renderer">See NLog Wiki</a>
     /// </remarks>
     /// <seealso href="https://github.com/NLog/NLog/wiki/Local-IP-Address-Layout-Renderer">Documentation on NLog Wiki</seealso>

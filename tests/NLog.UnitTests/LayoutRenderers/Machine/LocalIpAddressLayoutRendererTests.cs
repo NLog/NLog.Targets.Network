@@ -1,5 +1,5 @@
 ﻿// 
-// Copyright (c) 2004-2020 Jaroslaw Kowalski <jaak@jkowalski.net>, Kim Christensen, Julian Verdurmen
+// Copyright (c) 2004-2024 Jaroslaw Kowalski <jaak@jkowalski.net>, Kim Christensen, Julian Verdurmen
 // 
 // All rights reserved.
 // 
@@ -221,8 +221,8 @@ namespace NLog.UnitTests.LayoutRenderers
                 .WithIp(ipv6)
                 .Build();
 
-            var ipAddressRenderer = new LocalIpAddressLayoutRenderer(networkInterfaceRetrieverMock) 
-                {AddressFamily = AddressFamily.InterNetworkV6};
+            var ipAddressRenderer = new LocalIpAddressLayoutRenderer(networkInterfaceRetrieverMock)
+            { AddressFamily = AddressFamily.InterNetworkV6 };
 
             // Act
             var result = ipAddressRenderer.Render(LogEventInfo.CreateNullEvent());
@@ -278,7 +278,7 @@ namespace NLog.UnitTests.LayoutRenderers
             var key = _networkInterfaces.Count - 1;
             if (!_ips.ContainsKey(key))
             {
-                _ips.Add(key, new List<KeyValuePair<string,string>>());
+                _ips.Add(key, new List<KeyValuePair<string, string>>());
             }
 
             var list = _ips[key];
