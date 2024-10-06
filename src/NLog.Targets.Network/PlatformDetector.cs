@@ -31,44 +31,48 @@
 // THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-namespace NLog.Targets
+namespace NLog.Internal
 {
-    using NLog.Config;
-    using NLog.Internal;
-    using NLog.Layouts;
-
     /// <summary>
-    /// Represents a parameter to a NLogViewer target.
+    /// Detects the platform the NLog is running on.
     /// </summary>
-    [NLogConfigurationItem]
-    public class NLogViewerParameterInfo
+    internal static class PlatformDetector
     {
         /// <summary>
-        /// Initializes a new instance of the <see cref="NLogViewerParameterInfo" /> class.
+        /// Gets the current runtime OS.
         /// </summary>
-        public NLogViewerParameterInfo()
+        public static RuntimeOS CurrentOS => _currentOS ?? (_currentOS = GetCurrentRuntimeOS()).Value;
+        private static RuntimeOS? _currentOS;
+
+        private static RuntimeOS GetCurrentRuntimeOS()
         {
+#if NETFRAMEWORK
+            var platformID = System.Environment.OSVersion.Platform;
+            if ((int)platformID == 4 || (int)platformID == 128)
+            {
+                return RuntimeOS.Linux;
+            }
+
+            if (platformID == System.PlatformID.Win32Windows)
+            {
+                return RuntimeOS.Windows9x;
+            }
+
+            if (platformID == System.PlatformID.Win32NT)
+            {
+                return RuntimeOS.WindowsNT;
+            }
+
+            return RuntimeOS.Unknown;
+#else
+            if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+                return RuntimeOS.WindowsNT;
+            else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX))
+                return RuntimeOS.MacOSX;
+            else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux))
+                return RuntimeOS.Linux;
+            return RuntimeOS.Unknown;
+#endif
         }
-
-        /// <summary>
-        /// Gets or sets viewer parameter name.
-        /// </summary>
-        /// <docgen category='Layout Options' order='1' />
-        [RequiredParameter]
-        public string Name { get => _name; set => _name = XmlHelper.XmlConvertToStringSafe(value); }
-        private string _name;
-
-        /// <summary>
-        /// Gets or sets the layout that should be use to calculate the value for the parameter.
-        /// </summary>
-        /// <docgen category='Layout Options' order='10' />
-        [RequiredParameter]
-        public Layout Layout { get; set; }
-
-        /// <summary>
-        /// Gets or sets whether an attribute with empty value should be included in the output
-        /// </summary>
-        /// <docgen category='Layout Options' order='100' />
-        public bool IncludeEmptyValue { get; set; }
     }
 }
