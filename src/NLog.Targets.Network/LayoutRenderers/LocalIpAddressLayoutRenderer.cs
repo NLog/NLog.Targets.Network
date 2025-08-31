@@ -1,4 +1,4 @@
-﻿//
+//
 // Copyright (c) 2004-2024 Jaroslaw Kowalski <jaak@jkowalski.net>, Kim Christensen, Julian Verdurmen
 //
 // All rights reserved.

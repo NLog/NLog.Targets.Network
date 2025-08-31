@@ -1,0 +1,20 @@
+version: 6.0.0.{build}
+image: Visual Studio 2022
+configuration: Release
+platform: Any CPU
+skip_tags: true
+nuget:
+  disable_publish_on_pr: true
+build_script:
+- ps: msbuild /t:restore,pack /p:Configuration=Release /p:IncludeSymbols=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true /p:EmbedUntrackedSources=true /p:PublishRepositoryUrl=true /verbosity:minimal
+test_script:
+- ps: dotnet test tests\NLog.Targets.Network.Tests\NLog.Targets.Network.Tests.csproj
+artifacts:
+  - path: '**\NLog.*.nupkg'
+  - path: '**\NLog.*.snupkg'
+deploy:
+- provider: NuGet
+  api_key:
+    secure: f6oWebyOFLpuuo2PMd6xgoxwMq+JvXVUmPyBme89zS7UF0zcvLYPSKN/p6B/KaMs
+  on:
+    branch: master
