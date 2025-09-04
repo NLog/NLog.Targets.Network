@@ -1,5 +1,8 @@
 # NLog Network Target
 
+[![Version](https://badge.fury.io/nu/NLog.Targets.Network.svg)](https://www.nuget.org/packages/NLog.Targets.Network)
+[![AppVeyor](https://img.shields.io/appveyor/ci/nlog/NLog-Targets-Network/master.svg)](https://ci.appveyor.com/project/nlog/NLog-Targets-Network/branch/master)
+
 NLog Network Target for sending messages using TCP / UDP sockets with support for SSL / TSL.
 
 If having trouble with output, then check [NLog InternalLogger](https://github.com/NLog/NLog/wiki/Internal-Logging) for clues. See also [Troubleshooting NLog](https://github.com/NLog/NLog/wiki/Logging-Troubleshooting)
