@@ -6,7 +6,7 @@ skip_tags: true
 nuget:
   disable_publish_on_pr: true
 build_script:
-- ps: msbuild /t:restore,pack /p:targetFrameworks='"net46;net45;net35;netstandard2.0;netstandard2.1"' /p:Configuration=Release /p:IncludeSymbols=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true /p:EmbedUntrackedSources=true /p:PublishRepositoryUrl=true /verbosity:minimal
+- ps: msbuild /t:restore,pack /p:Configuration=Release /p:IncludeSymbols=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true /p:EmbedUntrackedSources=true /p:PublishRepositoryUrl=true /verbosity:minimal
 test_script:
 - ps: dotnet test tests\NLog.Targets.Network.Tests\NLog.Targets.Network.Tests.csproj
 artifacts:
