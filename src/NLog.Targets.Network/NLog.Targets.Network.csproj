@@ -14,7 +14,7 @@
 
     <Title>NLog.Targets.Network</Title>
     <Company>NLog</Company>
-    <Description>NetworkTarget for sending messages using TCP / UDP sockets with support for SSL / TSL</Description>
+    <Description>NetworkTarget for sending messages using TCP / UDP sockets with support for SSL / TSL (Log4JXml / GELF / Syslog / Splunk)</Description>
     <Product>NLog.Targets.Network v$(ProductVersion)</Product>
     <InformationalVersion>$(ProductVersion)</InformationalVersion>
     <Authors>Jarek Kowalski,Kim Christensen,Julian Verdurmen</Authors>
@@ -41,7 +41,7 @@ Local IP Docs:
 https://github.com/NLog/NLog/wiki/Local-IP-Address-Layout-Renderer
 </PackageReleaseNotes>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageTags>NLog;TCPIP;TCP;UDP;Network;logging;log</PackageTags>
+    <PackageTags>NLog;TCPIP;TCP;UDP;Network;logging;log;GELF;Syslog;Splunk;Log4JXml</PackageTags>
     <PackageIcon>N.png</PackageIcon>
     <PackageProjectUrl>https://github.com/NLog/NLog.Targets.Network</PackageProjectUrl>
     <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
