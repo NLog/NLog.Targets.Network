@@ -39,7 +39,7 @@ namespace NLog.Layouts
         /// <summary>Kernel messages - LOG_KERN</summary>
         Kernel = 0,
 
-        /// <summary>Random user-level messages - LOG_USER</summary>
+        /// <summary>User-level application messages - LOG_USER</summary>
         User = 1,
 
         /// <summary>Mail system - LOG_MAIL</summary>
