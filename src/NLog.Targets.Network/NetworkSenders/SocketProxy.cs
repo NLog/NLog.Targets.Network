@@ -52,10 +52,22 @@ namespace NLog.Internal.NetworkSenders
         internal SocketProxy(AddressFamily addressFamily, SocketType socketType, ProtocolType protocolType)
         {
             _socket = new Socket(addressFamily, socketType, protocolType);
+            TryEnableDualModeForIPV6(addressFamily);
+        }
+
+        private void TryEnableDualModeForIPV6(AddressFamily addressFamily)
+        {
 #if !NET35
-            if (addressFamily == AddressFamily.InterNetworkV6)
+            try
             {
-                _socket.DualMode = true;   // Allow for IPv4 mapped addresses over IPv6
+                if (addressFamily == AddressFamily.InterNetworkV6)
+                {
+                    _socket.DualMode = true;   // Allow for IPv4 mapped addresses over IPv6
+                }
+            }
+            catch (Exception ex)
+            {
+                NLog.Common.InternalLogger.Debug(ex, "NetworkTarget: Failed to configure IPv6 Socket-option DualMode = true");
             }
 #endif
         }
