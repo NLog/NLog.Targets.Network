@@ -404,7 +404,7 @@ namespace NLog.Layouts
                 for (int i = propertyStartIndex; i < target.Length; ++i)
                 {
                     var chr = target[i];
-                    if (IsSpecialChar(chr))
+                    if (MustEscapeSpecialChar(chr))
                     {
                         var stringValue = target.ToString(propertyStartIndex, target.Length - propertyStartIndex);
                         target.Length = propertyStartIndex;
@@ -425,7 +425,7 @@ namespace NLog.Layouts
                 case TypeCode.Char:
                     {
                         var charValue = propertyValue.ToChar(System.Globalization.CultureInfo.CurrentCulture);
-                        if (IsSpecialChar(charValue))
+                        if (MustEscapeSpecialChar(charValue))
                             return char.IsWhiteSpace(charValue) ? " " : $"\\{charValue}";
                         else
                             return propertyValue;
@@ -433,8 +433,8 @@ namespace NLog.Layouts
                 case TypeCode.String:
                     {
                         var stringValue = propertyValue.ToString();
-                        if (stringValue.IndexOfAny(SpecialChars) >= 0)
-                            return stringValue.Replace("\\", "\\\\").Replace("[", "\\[").Replace("]", "\\]").Replace("=", "\\=").Replace("\"", "\\\"").Replace("\n", " ").Replace("\r", "");
+                        if (stringValue.IndexOfAny(EscapeSpecialChars) >= 0)
+                            return stringValue.Replace("\\", "\\\\").Replace("]", "\\]").Replace("\"", "\\\"").Replace("\n", " ").Replace("\r", "");
                         else
                             return stringValue;
                     }
@@ -467,7 +467,22 @@ namespace NLog.Layouts
             return unicodeValue;
         }
 
-        private static readonly char[] SpecialChars = new[] { '[', ']', '"', '\\', '=', '\r', '\n' };
+        private static readonly char[] EscapeSpecialChars = new[] { ']', '"', '\\', '\r', '\n' };
+
+        private static bool MustEscapeSpecialChar(char c)
+        {
+            switch (c)
+            {
+                case ']':
+                case '"':
+                case '\'':
+                case '\r':
+                case '\n':
+                    return true;
+                default:
+                    return false;
+            }
+        }
 
         private static bool IsSpecialChar(char c)
         {
