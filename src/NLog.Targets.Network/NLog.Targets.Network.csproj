@@ -5,7 +5,7 @@
     <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' AND '$(VisualStudioVersion)' &lt; '17.0' ">net35;net46;netstandard2.0</TargetFrameworks>
     <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' ">net35;net46;netstandard2.0;netstandard2.1</TargetFrameworks>
 
-    <VersionPrefix>6.0.3</VersionPrefix>
+    <VersionPrefix>6.0.4</VersionPrefix>
     <AssemblyVersion>6.0.0.0</AssemblyVersion>
     <!-- Strong AssemblyVersion must be fixed on 6.0.0.0 -->
     <AppVeyorBuildNumber>$(APPVEYOR_BUILD_NUMBER)</AppVeyorBuildNumber>
@@ -22,24 +22,12 @@
     <Copyright>Copyright (c) 2004-$(CurrentYear) NLog Project - https://nlog-project.org/ </Copyright>
 
     <PackageReleaseNotes>
-NetworkTarget Docs:
-https://github.com/NLog/NLog/wiki/Network-target
+Changelog:
 
-SyslogTarget Docs:
-https://github.com/NLog/NLog/wiki/Syslog-target
-
-Log4JXmlTarget Docs:
-https://github.com/NLog/NLog/wiki/Log4JXml-target
-
-GelfTarget Docs:
-https://github.com/NLog/NLog/wiki/Gelf-target
-
-SplunkTarget Docs:
-https://github.com/NLog/NLog/wiki/Splunk-target
-
-Local IP Docs:
-https://github.com/NLog/NLog/wiki/Local-IP-Address-Layout-Renderer
-</PackageReleaseNotes>
+- First release after extracting to own git repository.
+- SyslogLayout - Rfc5424 specs says escape is not needed for square-bracket and equal-sign.
+- Handle that IPv6 DualMode is not supported on all platforms.
+    </PackageReleaseNotes>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>NLog;TCPIP;TCP;UDP;Network;logging;log;GELF;Syslog;Splunk;Log4JXml</PackageTags>
     <PackageIcon>N.png</PackageIcon>
@@ -87,7 +75,7 @@ https://github.com/NLog/NLog/wiki/Local-IP-Address-Layout-Renderer
 
   <ItemGroup>
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
-    <PackageReference Include="NLog" Version="6.0.3" />
+    <PackageReference Include="NLog" Version="6.0.4" />
   </ItemGroup>
 
   <ItemGroup>
