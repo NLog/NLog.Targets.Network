@@ -209,13 +209,13 @@ namespace NLog.Targets.Network
                 var guid = Guid.NewGuid();
 
                 var logger = logFactory.GetCurrentClassLogger();
-                var logEvent = LogEventInfo.Create(LogLevel.Info, null, null, "Hello {World} with {CorrelationKey}", new object[] { "\nEarth\n", guid });
+                var logEvent = LogEventInfo.Create(LogLevel.Info, null, null, "Hello {World} with {CorrelationKey}", new object[] { "\n[Earth=WaterPlanet]\n", guid });
                 logger.Log(logEvent);
                 logFactory.Flush();
 
                 int threadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
                 Assert.Single(memTarget.Logs);
-                Assert.Equal($"<14>1 {logEvent.TimeStamp:o} {HostName} {ProcessName} {ProcessId} - [meta World=\" Earth \" CorrelationKey=\"{guid}\" ThreadId=\" {threadId} \"] {logEvent.FormattedMessage}", memTarget.Logs[0]);
+                Assert.Equal($"<14>1 {logEvent.TimeStamp:o} {HostName} {ProcessName} {ProcessId} - [meta World=\" [Earth=WaterPlanet\\] \" CorrelationKey=\"{guid}\" ThreadId=\" {threadId} \"] {logEvent.FormattedMessage}", memTarget.Logs[0]);
             }
         }
 
