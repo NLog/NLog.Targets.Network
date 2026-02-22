@@ -130,7 +130,7 @@ namespace NLog.Targets
 
             return Encoding.ASCII.GetBytes($"{octetCount} ");
         }
-        private static readonly byte[][] OctetHeaders = new byte[4046][];
+        private static readonly byte[][] OctetHeaders = new byte[8192][];
 
         /// <inheritdoc/>
         public override Layout Layout
