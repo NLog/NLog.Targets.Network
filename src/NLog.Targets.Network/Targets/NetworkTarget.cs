@@ -35,12 +35,12 @@ namespace NLog.Targets
 {
     using System;
     using System.Collections.Generic;
+    using System.Security.Cryptography.X509Certificates;
     using System.Text;
     using System.Threading;
     using NLog.Common;
-    using NLog.Layouts;
     using NLog.Internal.NetworkSenders;
-    using System.Security.Cryptography.X509Certificates;
+    using NLog.Layouts;
 
     /// <summary>
     /// NetworkTarget for sending messages over the network using TCP / UDP sockets
@@ -651,9 +651,13 @@ namespace NLog.Targets
 
         private NetworkSender CreateNetworkSender(string address, LogEventInfo logEventInfo)
         {
-            var sslCertificateFile = SslCertificateFile?.Render(logEventInfo) ?? string.Empty;
-            var sslCertificatePassword = SslCertificatePassword?.Render(logEventInfo) ?? string.Empty;
-            var sslCertificateOverride = LoadSslCertificateFromFile(sslCertificateFile, sslCertificatePassword);
+            X509Certificate2Collection? sslCertificateOverride = null;
+            if (SslCertificateFile != null)
+            {
+                var sslCertificateFile = SslCertificateFile.Render(logEventInfo) ?? string.Empty;
+                var sslCertificatePassword = SslCertificatePassword?.Render(logEventInfo) ?? string.Empty;
+                sslCertificateOverride = LoadSslCertificateFromFile(sslCertificateFile, sslCertificatePassword);
+            }
 
             var sender = SenderFactory.Create(address, sslCertificateOverride, this);
             sender.Initialize();
@@ -695,9 +699,6 @@ namespace NLog.Targets
 
         internal X509Certificate2Collection? LoadSslCertificateFromFile(string sslCertificateFile, string sslCertificatePassword)
         {
-            if (string.IsNullOrEmpty(sslCertificateFile))
-                return null;    // NOSONAR
-
             if (_certificateCache != null && _certificateCache.TryGetValue(sslCertificateFile, out var clientCertificates))
                 return clientCertificates;  // Safe to lookup without lock, since immutable collection
 
@@ -708,21 +709,8 @@ namespace NLog.Targets
                     if (_certificateCache?.TryGetValue(sslCertificateFile, out clientCertificates) == true)
                         return clientCertificates;
 
-                    if (string.IsNullOrEmpty(sslCertificateFile))
-                    {
-                        clientCertificates = new X509Certificate2Collection();
-                    }
-                    else if (sslCertificateFile.EndsWith(".pem", StringComparison.OrdinalIgnoreCase))
-                    {
-                        InternalLogger.Debug("{0}: Loading SSL certificate from PEM-file: {1}", this, sslCertificateFile);
-                        var clientCertificate = LoadCertificateFromPem(sslCertificateFile);
-                        clientCertificates = new X509Certificate2Collection(clientCertificate);
-                    }
-                    else
-                    {
-                        InternalLogger.Debug("{0}: Loading SSL certificate from file: {1}", this, sslCertificateFile);
-                        clientCertificates = new X509Certificate2Collection(new X509Certificate2(sslCertificateFile, string.IsNullOrEmpty(sslCertificatePassword) ? null : sslCertificatePassword));
-                    }
+                    InternalLogger.Debug("{0}: Loading SSL certificate from file: {1}", this, sslCertificateFile);
+                    clientCertificates = LoadCertificateFromFile(sslCertificateFile, sslCertificatePassword);
 
                     var certificateCache = new Dictionary<string, X509Certificate2Collection>((_certificateCache?.Count ?? 0) + 1);
                     if (_certificateCache != null)
@@ -739,6 +727,22 @@ namespace NLog.Targets
             {
                 InternalLogger.Error(ex, "{0}: Failed loading SSL certificate from file: {1}", this, sslCertificateFile);
                 throw new NLogRuntimeException($"NetworkTarget: Failed loading SSL certificate from file: {sslCertificateFile}", ex);
+            }
+        }
+
+        internal static X509Certificate2Collection LoadCertificateFromFile(string sslCertificateFile, string sslCertificatePassword)
+        {
+            if (string.IsNullOrEmpty(sslCertificateFile))
+                return new X509Certificate2Collection();
+
+            if (sslCertificateFile.EndsWith(".pem", StringComparison.OrdinalIgnoreCase))
+            {
+                var clientCertificate = LoadCertificateFromPem(sslCertificateFile);
+                return new X509Certificate2Collection(clientCertificate);
+            }
+            else
+            {
+                return new X509Certificate2Collection(new X509Certificate2(sslCertificateFile, string.IsNullOrEmpty(sslCertificatePassword) ? null : sslCertificatePassword));
             }
         }
 
