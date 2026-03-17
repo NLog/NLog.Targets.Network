@@ -1,4 +1,4 @@
-//
+﻿//
 // Copyright (c) 2004-2024 Jaroslaw Kowalski <jaak@jkowalski.net>, Kim Christensen, Julian Verdurmen
 //
 // All rights reserved.
@@ -737,8 +737,7 @@ namespace NLog.Targets
 
             if (sslCertificateFile.EndsWith(".pem", StringComparison.OrdinalIgnoreCase))
             {
-                var clientCertificate = LoadCertificateFromPem(sslCertificateFile);
-                return new X509Certificate2Collection(clientCertificate);
+                return LoadCertificateFromPem(sslCertificateFile, sslCertificatePassword);
             }
             else
             {
@@ -746,36 +745,94 @@ namespace NLog.Targets
             }
         }
 
-        private static X509Certificate2 LoadCertificateFromPem(string fileName)
+        private static X509Certificate2Collection LoadCertificateFromPem(string fileName, string? password = null)
         {
             using (var reader = new System.IO.StreamReader(new System.IO.FileStream(fileName, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read), Encoding.UTF8))
             {
                 var pem = reader.ReadToEnd();
-                string base64 = GetBase64FromPem(pem);
-                byte[] certBytes = Convert.FromBase64String(base64);
-                return new X509Certificate2(certBytes);
+                var certBytes = TryParsePemBlock(pem, "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----");
+                if (certBytes is null)
+                    throw new NLogRuntimeException("Invalid PEM format: Missing BEGIN CERTIFICATE header");
+
+                var certificate = new X509Certificate2(certBytes);
+#if NET || NETSTANDARD2_1_OR_GREATER
+                var certWithKey = TryAttachPrivateKeyFromPem(pem, certificate, password);
+                if (certWithKey != null)
+                {
+                    certificate.Dispose();
+                    certificate = certWithKey;
+                }
+#endif
+
+                var collection = new X509Certificate2Collection();
+                collection.Add(certificate);
+                return collection;
             }
         }
 
-        private static string GetBase64FromPem(string pem)
+        private static byte[]? TryParsePemBlock(string pem, string header, string footer)
         {
-            const string header = "-----BEGIN CERTIFICATE-----";
-            const string footer = "-----END CERTIFICATE-----";
+            int headerIndex = pem.IndexOf(header, StringComparison.Ordinal);
+            if (headerIndex < 0)
+                return null;
 
-            int start = pem.IndexOf(header, StringComparison.Ordinal) + header.Length;
-            if (start <= header.Length)
-            {
-                throw new NLogRuntimeException("Invalid PEM format: Missing BEGIN CERTIFICATE header");
-            }
-
+            int start = headerIndex + header.Length;
             int end = pem.IndexOf(footer, start, StringComparison.Ordinal);
-            if (end <= start)
-            {
-                throw new NLogRuntimeException("Invalid PEM format: Missing END CERTIFICATE footer");
-            }
-            string base64 = pem.Substring(start, end - start);
-            base64 = base64.Replace("\r", "").Replace("\n", "").Trim();
-            return base64;
+            if (end < 0)
+                throw new NLogRuntimeException($"Invalid PEM format: Missing {footer}");
+
+            string base64 = pem.Substring(start, end - start).Replace("\r", "").Replace("\n", "").Trim();
+            if (string.IsNullOrEmpty(base64))
+                throw new NLogRuntimeException($"Invalid PEM format: Missing content between {header} and {footer}");
+
+            return Convert.FromBase64String(base64);
         }
+
+#if NET || NETSTANDARD2_1_OR_GREATER
+        private static X509Certificate2? TryAttachPrivateKeyFromPem(string pem, X509Certificate2 certificate, string? password)
+        {
+            byte[]? pkcs8Bytes = TryParsePemBlock(pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----");
+            byte[]? rsaPkcs1Bytes = pkcs8Bytes == null ? TryParsePemBlock(pem, "-----BEGIN RSA PRIVATE KEY-----", "-----END RSA PRIVATE KEY-----") : null;
+            byte[]? ecPrivKeyBytes = pkcs8Bytes == null ? TryParsePemBlock(pem, "-----BEGIN EC PRIVATE KEY-----", "-----END EC PRIVATE KEY-----") : null;
+            byte[]? encryptedPkcs8Bytes = (pkcs8Bytes == null && rsaPkcs1Bytes == null && ecPrivKeyBytes == null)
+                ? TryParsePemBlock(pem, "-----BEGIN ENCRYPTED PRIVATE KEY-----", "-----END ENCRYPTED PRIVATE KEY-----") : null;
+
+            if (pkcs8Bytes == null && rsaPkcs1Bytes == null && ecPrivKeyBytes == null && encryptedPkcs8Bytes == null)
+                return null;
+
+            const string rsaOid = "1.2.840.113549.1.1.1";
+            const string ecdsaOid = "1.2.840.10045.2.1";
+            string keyAlgorithm = certificate.GetKeyAlgorithm();
+
+            if (rsaPkcs1Bytes != null || keyAlgorithm == rsaOid)
+            {
+                using var rsa = System.Security.Cryptography.RSA.Create();
+                if (pkcs8Bytes != null)
+                    rsa.ImportPkcs8PrivateKey(pkcs8Bytes, out _);
+                else if (rsaPkcs1Bytes != null)
+                    rsa.ImportRSAPrivateKey(rsaPkcs1Bytes, out _);
+                else if (encryptedPkcs8Bytes != null && !string.IsNullOrEmpty(password))
+                    rsa.ImportEncryptedPkcs8PrivateKey(password, encryptedPkcs8Bytes, out _);
+                else
+                    return null;
+                return certificate.CopyWithPrivateKey(rsa);
+            }
+            else if (ecPrivKeyBytes != null || keyAlgorithm == ecdsaOid)
+            {
+                using var ecdsa = System.Security.Cryptography.ECDsa.Create();
+                if (pkcs8Bytes != null)
+                    ecdsa.ImportPkcs8PrivateKey(pkcs8Bytes, out _);
+                else if (ecPrivKeyBytes != null)
+                    ecdsa.ImportECPrivateKey(ecPrivKeyBytes, out _);
+                else if (encryptedPkcs8Bytes != null && !string.IsNullOrEmpty(password))
+                    ecdsa.ImportEncryptedPkcs8PrivateKey(password, encryptedPkcs8Bytes, out _);
+                else
+                    return null;
+                return certificate.CopyWithPrivateKey(ecdsa);
+            }
+
+            return null;
+        }
+#endif
     }
 }
