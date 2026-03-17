@@ -144,9 +144,9 @@ namespace NLog.Targets
         /// Send the http-request headers first, and expect the http-server to reply with http-status 100-continue before sending the http-request body.
         /// </summary>
         /// <remarks>Default: <see langword="false"/></remarks>
-        public bool Expect100Continue
+        public bool? Expect100Continue
         {
-            get => _expect100Continue ?? ServicePointManager.Expect100Continue;
+            get => _expect100Continue;
             set
             {
                 if (value == _expect100Continue) return;
@@ -670,8 +670,7 @@ namespace NLog.Targets
                 newHttpClient.DefaultRequestHeaders.Add("Keep-Alive", "timeout=5, max=1000");
             }
 
-            if (Expect100Continue)
-                newHttpClient.DefaultRequestHeaders.ExpectContinue = true;
+            newHttpClient.DefaultRequestHeaders.ExpectContinue = Expect100Continue;
 
             foreach (var header in Headers)
             {
