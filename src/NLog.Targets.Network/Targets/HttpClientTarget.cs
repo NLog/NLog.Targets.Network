@@ -139,9 +139,9 @@ namespace NLog.Targets
         private bool _keepAlive;
 
         /// <summary>
-        /// Expect-header to use with the http-request.
+        /// Get or sets whether to expect http 100-Continue behavior, where the client sends headers and expects the http-server to reply with http-status 100-continue before sending the http-request body.
         ///
-        /// Send the http-request headers first, and expect the http-server to reply with http-status 100-continue before sending the http-request body.
+        /// This can introduce additional latency for the http-request, especially when http-server does not support the protocol.
         /// </summary>
         /// <remarks>Default: <see langword="false"/></remarks>
         public bool? Expect100Continue
@@ -154,7 +154,7 @@ namespace NLog.Targets
                 SignalHttpClientReset();
             }
         }
-        private bool? _expect100Continue;
+        private bool? _expect100Continue = false;
 
         /// <summary>
         /// Authorization-header to use with the http-request
@@ -670,7 +670,8 @@ namespace NLog.Targets
                 newHttpClient.DefaultRequestHeaders.Add("Keep-Alive", "timeout=5, max=1000");
             }
 
-            newHttpClient.DefaultRequestHeaders.ExpectContinue = Expect100Continue;
+            if (Expect100Continue.HasValue)
+                newHttpClient.DefaultRequestHeaders.ExpectContinue = Expect100Continue.Value;
 
             foreach (var header in Headers)
             {

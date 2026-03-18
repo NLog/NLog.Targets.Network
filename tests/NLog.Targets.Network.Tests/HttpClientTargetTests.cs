@@ -397,7 +397,7 @@ namespace NLog.Targets.Network
             {
                 _listener = new TcpListener(IPAddress.Loopback, 0);
                 _listener.Start();
-                Task.Run(AcceptLoopAsync);
+                Task.Run(AcceptLoopAsync, _cts.Token);
             }
 
             public List<CapturedRequest> WaitForRequests(int count, int timeoutMs = 15000)
@@ -423,41 +423,36 @@ namespace NLog.Targets.Network
             {
                 while (!_cts.IsCancellationRequested)
                 {
-                    TcpClient client;
                     try
                     {
-                        client = await _listener.AcceptTcpClientAsync().ConfigureAwait(false);
+                        var client = await _listener.AcceptTcpClientAsync().ConfigureAwait(false);
+                        _ = Task.Run(() => HandleClientAsync(client), _cts.Token);
                     }
                     catch
                     {
                         break;
                     }
-                    _ = Task.Run(() => HandleClientAsync(client));
                 }
             }
 
             private async Task HandleClientAsync(TcpClient client)
             {
-                try
+                using (client)
                 {
-                    using (client)
-                    {
-                        var stream = client.GetStream();
-                        var request = await ReadHttpRequestAsync(stream).ConfigureAwait(false);
-                        lock (_lock)
-                            _requests.Add(request);
-                        _requestSignal.Release();
+                    var stream = client.GetStream();
+                    var request = await ReadHttpRequestAsync(stream, _cts.Token).ConfigureAwait(false);
+                    lock (_lock)
+                        _requests.Add(request);
+                    _requestSignal.Release();
 
-                        var statusLine = ResponseStatusCode == 200 ? "200 OK" : $"{ResponseStatusCode} Error";
-                        var response = $"HTTP/1.1 {statusLine}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-                        var responseBytes = Encoding.ASCII.GetBytes(response);
-                        await stream.WriteAsync(responseBytes, 0, responseBytes.Length).ConfigureAwait(false);
-                    }
+                    var statusLine = ResponseStatusCode == 200 ? "200 OK" : $"{ResponseStatusCode} Error";
+                    var response = $"HTTP/1.1 {statusLine}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                    var responseBytes = Encoding.ASCII.GetBytes(response);
+                    await stream.WriteAsync(responseBytes, 0, responseBytes.Length, _cts.Token).ConfigureAwait(false);
                 }
-                catch { }
             }
 
-            private static async Task<CapturedRequest> ReadHttpRequestAsync(NetworkStream stream)
+            private static async Task<CapturedRequest> ReadHttpRequestAsync(NetworkStream stream, CancellationToken cancellationToken)
             {
                 // Read headers byte by byte until the end-of-headers marker (\r\n\r\n)
                 var headerBytes = new List<byte>(512);
@@ -502,7 +497,7 @@ namespace NLog.Targets.Network
                     int bytesRead = 0;
                     while (bytesRead < contentLength)
                     {
-                        var read = await stream.ReadAsync(bodyBytes, bytesRead, contentLength - bytesRead).ConfigureAwait(false);
+                        var read = await stream.ReadAsync(bodyBytes, bytesRead, contentLength - bytesRead, cancellationToken).ConfigureAwait(false);
                         if (read == 0) break;
                         bytesRead += read;
                     }

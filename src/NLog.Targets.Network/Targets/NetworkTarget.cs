@@ -750,45 +750,62 @@ namespace NLog.Targets
             using (var reader = new System.IO.StreamReader(new System.IO.FileStream(fileName, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read), Encoding.UTF8))
             {
                 var pem = reader.ReadToEnd();
-                var certBytes = TryParsePemBlock(pem, "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----");
-                if (certBytes is null)
+                var allCertificates = TryParseAllPemBlocks(pem, "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----");
+                if (allCertificates.Count == 0)
                     throw new NLogRuntimeException("Invalid PEM format: Missing BEGIN CERTIFICATE header");
 
-                var certificate = new X509Certificate2(certBytes);
+                var leafCertificate = new X509Certificate2(allCertificates[0]);
 #if NET || NETSTANDARD2_1_OR_GREATER
-                var certWithKey = TryAttachPrivateKeyFromPem(pem, certificate, password);
+                var certWithKey = TryAttachPrivateKeyFromPem(pem, leafCertificate, password);
                 if (certWithKey != null)
                 {
-                    certificate.Dispose();
-                    certificate = certWithKey;
+                    leafCertificate.Dispose();
+                    leafCertificate = certWithKey;
                 }
 #endif
 
                 var collection = new X509Certificate2Collection();
-                collection.Add(certificate);
+                collection.Add(leafCertificate);
+                for (int i = 1; i < allCertificates.Count; i++)
+                {
+                    collection.Add(new X509Certificate2(allCertificates[i]));
+                }
                 return collection;
             }
         }
 
-        private static byte[]? TryParsePemBlock(string pem, string header, string footer)
+        private static List<byte[]> TryParseAllPemBlocks(string pem, string header, string footer)
         {
-            int headerIndex = pem.IndexOf(header, StringComparison.Ordinal);
-            if (headerIndex < 0)
-                return null;
+            var results = new List<byte[]>();
+            int searchFrom = 0;
+            while (true)
+            {
+                int headerIndex = pem.IndexOf(header, searchFrom, StringComparison.Ordinal);
+                if (headerIndex < 0)
+                    break;
 
-            int start = headerIndex + header.Length;
-            int end = pem.IndexOf(footer, start, StringComparison.Ordinal);
-            if (end < 0)
-                throw new NLogRuntimeException($"Invalid PEM format: Missing {footer}");
+                int start = headerIndex + header.Length;
+                int end = pem.IndexOf(footer, start, StringComparison.Ordinal);
+                if (end < 0)
+                    throw new NLogRuntimeException($"Invalid PEM format: Missing {footer}");
 
-            string base64 = pem.Substring(start, end - start).Replace("\r", "").Replace("\n", "").Trim();
-            if (string.IsNullOrEmpty(base64))
-                throw new NLogRuntimeException($"Invalid PEM format: Missing content between {header} and {footer}");
+                string base64 = pem.Substring(start, end - start).Replace("\r", "").Replace("\n", "").Trim();
+                if (string.IsNullOrEmpty(base64))
+                    throw new NLogRuntimeException($"Invalid PEM format: Missing content between {header} and {footer}");
 
-            return Convert.FromBase64String(base64);
+                results.Add(Convert.FromBase64String(base64));
+                searchFrom = end + footer.Length;
+            }
+            return results;
         }
 
 #if NET || NETSTANDARD2_1_OR_GREATER
+        private static byte[]? TryParsePemBlock(string pem, string header, string footer)
+        {
+            var blocks = TryParseAllPemBlocks(pem, header, footer);
+            return blocks.Count > 0 ? blocks[0] : null;
+        }
+
         private static X509Certificate2? TryAttachPrivateKeyFromPem(string pem, X509Certificate2 certificate, string? password)
         {
             byte[]? pkcs8Bytes = TryParsePemBlock(pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----");
