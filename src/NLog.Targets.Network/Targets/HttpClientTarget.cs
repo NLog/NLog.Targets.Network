@@ -78,7 +78,7 @@ namespace NLog.Targets
             get => _url;
             set
             {
-                if (value == _url) return;
+                if (ReferenceEquals(value, _url)) return;
                 _url = value;
                 SignalHttpClientReset();
             }
@@ -159,17 +159,17 @@ namespace NLog.Targets
         /// <summary>
         /// Authorization-header to use with the http-request
         /// </summary>
-        public Layout Authorization
+        public Layout? Authorization
         {
             get => _authorization;
             set
             {
-                if (value == _authorization) return;
+                if (ReferenceEquals(value, _authorization)) return;
                 _authorization = value;
                 SignalHttpClientReset();
             }
         }
-        private Layout _authorization = Layout.Empty;
+        private Layout? _authorization;
 
         /// <summary>
         /// Gets or sets the line ending mode to use when batching log events.
@@ -253,47 +253,47 @@ namespace NLog.Targets
         /// <summary>
         /// Gets or sets the URL of the proxy server used for HTTP requests.
         /// </summary>
-        public Layout ProxyUrl
+        public Layout? ProxyUrl
         {
             get => _proxyUrl;
             set
             {
-                if (value == _proxyUrl) return;
+                if (ReferenceEquals(value, _proxyUrl)) return;
                 _proxyUrl = value;
                 SignalHttpClientReset();
             }
         }
-        private Layout _proxyUrl = Layout.Empty;
+        private Layout? _proxyUrl;
 
         /// <summary>
         /// Gets or sets the layout used for proxy user authentication.
         /// </summary>
-        public Layout ProxyUser
+        public Layout? ProxyUser
         {
             get => _proxyUser;
             set
             {
-                if (value == _proxyUser) return;
+                if (ReferenceEquals(value, _proxyUser)) return;
                 _proxyUser = value;
                 SignalHttpClientReset();
             }
         }
-        private Layout _proxyUser = Layout.Empty;
+        private Layout? _proxyUser;
 
         /// <summary>
         /// Gets or sets the layout used for proxy password authentication.
         /// </summary>
-        public Layout ProxyPassword
+        public Layout? ProxyPassword
         {
             get => _proxyPassword;
             set
             {
-                if (value == _proxyPassword) return;
+                if (ReferenceEquals(value, _proxyPassword)) return;
                 _proxyPassword = value;
                 SignalHttpClientReset();
             }
         }
-        private Layout _proxyPassword = Layout.Empty;
+        private Layout? _proxyPassword;
 
         /// <inheritdoc />
         protected override void InitializeTarget()
