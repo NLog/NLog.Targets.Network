@@ -65,10 +65,6 @@ namespace NLog.Targets
         private volatile HttpClient? _httpClient;
         private TimeSpan _httpClientLifeTime = TimeSpan.FromMinutes(5);
         private DateTime _httpClientCreatedTime = DateTime.MinValue;
-#if !NETFRAMEWORK || NET471_OR_GREATER
-        private readonly object _certificateCacheLock = new object();
-        private Dictionary<string, System.Security.Cryptography.X509Certificates.X509Certificate2Collection>? _certificateCache;
-#endif
 
         /// <summary>
         /// EndPoint URL for the HTTP Web-server to send to
@@ -325,9 +321,6 @@ namespace NLog.Targets
             _httpClient = null;
             _httpClientCreatedTime = DateTime.MinValue;
             oldHttpClient?.Dispose();
-#if !NETFRAMEWORK || NET471_OR_GREATER
-            _certificateCache = null;
-#endif
             base.CloseTarget();
         }
 
@@ -376,18 +369,17 @@ namespace NLog.Targets
         /// <param name="baseAddress">Override the <see cref="HttpClient.BaseAddress"/></param>
         /// <param name="httpContent">The contents of the HTTP message</param>
         /// <param name="cancellationToken">The cancellation token to cancel operation.</param>
-        /// <returns>HTTP response with status-code and data</returns>
+        /// <returns>HTTP response with status-code and data (Remember to Dispose the response)</returns>
         protected async Task<HttpResponseMessage> HttpClientSendAsync(Uri? baseAddress, HttpContent httpContent, CancellationToken cancellationToken)
         {
             var httpClient = ResetHttpClientIfNeeded(baseAddress);
-
-            var httpRequest = new HttpRequestMessage(_httpMethod, string.Empty) { Content = httpContent };
-            httpRequest.Content.Headers.ContentType = _contentTypeHeader;
 
             HttpStatusCode httpStatusCode = default(HttpStatusCode);
 
             try
             {
+                using var httpRequest = new HttpRequestMessage(_httpMethod, string.Empty) { Content = httpContent };
+                httpRequest.Content.Headers.ContentType = _contentTypeHeader;
                 var httpResponseMessage = await httpClient.SendAsync(httpRequest, cancellationToken).ConfigureAwait(false);
                 httpStatusCode = httpResponseMessage.StatusCode;
                 try
@@ -614,24 +606,32 @@ namespace NLog.Targets
             if (SslCertificateFile != null)
             {
                 var sslCertificateFile = SslCertificateFile.Render(nullEvent) ?? string.Empty;
-                var sslCertificatePassword = SslCertificatePassword?.Render(nullEvent) ?? string.Empty;
-                var clientCertificates = LoadSslCertificateFromFile(sslCertificateFile, sslCertificatePassword);
-                if (clientCertificates?.Count > 0)
+                try
                 {
-                    handler.ClientCertificateOptions = ClientCertificateOption.Manual;
-                    handler.ClientCertificates.AddRange(clientCertificates);
-                }
-                handler.ServerCertificateCustomValidationCallback = static (message, certificate, chain, sslPolicyErrors) =>
-                {
-                    if (sslPolicyErrors == System.Net.Security.SslPolicyErrors.None)
+                    var sslCertificatePassword = SslCertificatePassword?.Render(nullEvent) ?? string.Empty;
+                    var clientCertificates = NetworkTarget.LoadSslCertificateFromFile(sslCertificateFile, sslCertificatePassword);
+                    if (clientCertificates?.Count > 0)
+                    {
+                        handler.ClientCertificateOptions = ClientCertificateOption.Manual;
+                        handler.ClientCertificates.AddRange(clientCertificates);
+                    }
+                    handler.ServerCertificateCustomValidationCallback = static (message, certificate, chain, sslPolicyErrors) =>
+                    {
+                        if (sslPolicyErrors == System.Net.Security.SslPolicyErrors.None)
+                            return true;
+
+                        Common.InternalLogger.Warn("SSL certificate errors were encountered when establishing connection to the server: {0}, Certificate: {1}", sslPolicyErrors, certificate);
+                        if (certificate is null)
+                            return false;
+
                         return true;
-
-                    Common.InternalLogger.Warn("SSL certificate errors were encountered when establishing connection to the server: {0}, Certificate: {1}", sslPolicyErrors, certificate);
-                    if (certificate is null)
-                        return false;
-
-                    return true;
-                };
+                    };
+                }
+                catch (Exception ex)
+                {
+                    Common.InternalLogger.Error(ex, "{0}: Failed loading SSL certificate from file: {1}", this, sslCertificateFile);
+                    throw new NLogRuntimeException($"NetworkTarget: Failed loading SSL certificate from file: {sslCertificateFile}", ex);
+                }
             }
 #endif
 
@@ -721,41 +721,6 @@ namespace NLog.Targets
                 ? new AuthenticationHeaderValue(parts[0])
                 : new AuthenticationHeaderValue(parts[0], string.Join(" ", parts.Skip(1)));
         }
-
-#if !NETFRAMEWORK || NET471_OR_GREATER
-        private System.Security.Cryptography.X509Certificates.X509Certificate2Collection? LoadSslCertificateFromFile(string sslCertificateFile, string sslCertificatePassword)
-        {
-            if (_certificateCache != null && _certificateCache.TryGetValue(sslCertificateFile, out var clientCertificates))
-                return clientCertificates;  // Safe to lookup without lock, since immutable collection
-
-            try
-            {
-                lock (_certificateCacheLock)
-                {
-                    if (_certificateCache?.TryGetValue(sslCertificateFile, out clientCertificates) == true)
-                        return clientCertificates;
-
-                    NLog.Common.InternalLogger.Debug("{0}: Loading SSL certificate from file: {1}", this, sslCertificateFile);
-                    clientCertificates = NetworkTarget.LoadCertificateFromFile(sslCertificateFile, sslCertificatePassword);
-
-                    var certificateCache = new Dictionary<string, System.Security.Cryptography.X509Certificates.X509Certificate2Collection>((_certificateCache?.Count ?? 0) + 1);
-                    if (_certificateCache != null)
-                    {
-                        foreach (var existingCertificate in _certificateCache)
-                            certificateCache.Add(existingCertificate.Key, existingCertificate.Value);
-                    }
-                    certificateCache[sslCertificateFile] = clientCertificates;
-                    _certificateCache = certificateCache;
-                    return clientCertificates;
-                }
-            }
-            catch (Exception ex)
-            {
-                NLog.Common.InternalLogger.Error(ex, "{0}: Failed loading SSL certificate from file: {1}", this, sslCertificateFile);
-                throw new NLogRuntimeException($"HttpClientTarget: Failed loading SSL certificate from file: {sslCertificateFile}", ex);
-            }
-        }
-#endif
     }
 }
 

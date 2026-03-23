@@ -76,8 +76,8 @@ namespace NLog.Targets
         private readonly char[] _reusableEncodingBuffer = new char[32 * 1024];
         private readonly StringBuilder _reusableStringBuilder = new StringBuilder();
 
-        private readonly object _certificateCacheLock = new object();
-        private Dictionary<string, X509Certificate2Collection>? _certificateCache;
+        private static readonly object _certificateCacheLock = new object();
+        private static Dictionary<string, X509Certificate2Collection>? _certificateCache;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NetworkTarget" /> class.
@@ -333,12 +333,6 @@ namespace NLog.Targets
                 }
 
                 _currentSenderCache.Clear();
-            }
-
-            if (_certificateCache?.Count > 0)
-            {
-                // Safe to reset without lock, since immutable collection
-                _certificateCache = null;
             }
         }
 
@@ -655,8 +649,16 @@ namespace NLog.Targets
             if (SslCertificateFile != null)
             {
                 var sslCertificateFile = SslCertificateFile.Render(logEventInfo) ?? string.Empty;
-                var sslCertificatePassword = SslCertificatePassword?.Render(logEventInfo) ?? string.Empty;
-                sslCertificateOverride = LoadSslCertificateFromFile(sslCertificateFile, sslCertificatePassword);
+                try
+                {
+                    var sslCertificatePassword = SslCertificatePassword?.Render(logEventInfo) ?? string.Empty;
+                    sslCertificateOverride = LoadSslCertificateFromFile(sslCertificateFile, sslCertificatePassword);
+                }
+                catch (Exception ex)
+                {
+                    InternalLogger.Error(ex, "{0}: Failed loading SSL certificate from file: {1}", this, sslCertificateFile);
+                    throw new NLogRuntimeException($"NetworkTarget: Failed loading SSL certificate from file: {sslCertificateFile}", ex);
+                }
             }
 
             var sender = SenderFactory.Create(address, sslCertificateOverride, this);
@@ -697,36 +699,28 @@ namespace NLog.Targets
             sender.Send(payload, 0, payload.Length, continuation);
         }
 
-        internal X509Certificate2Collection? LoadSslCertificateFromFile(string sslCertificateFile, string sslCertificatePassword)
+        internal static X509Certificate2Collection? LoadSslCertificateFromFile(string sslCertificateFile, string sslCertificatePassword)
         {
             if (_certificateCache != null && _certificateCache.TryGetValue(sslCertificateFile, out var clientCertificates))
                 return clientCertificates;  // Safe to lookup without lock, since immutable collection
 
-            try
+            lock (_certificateCacheLock)
             {
-                lock (_certificateCacheLock)
-                {
-                    if (_certificateCache?.TryGetValue(sslCertificateFile, out clientCertificates) == true)
-                        return clientCertificates;
-
-                    InternalLogger.Debug("{0}: Loading SSL certificate from file: {1}", this, sslCertificateFile);
-                    clientCertificates = LoadCertificateFromFile(sslCertificateFile, sslCertificatePassword);
-
-                    var certificateCache = new Dictionary<string, X509Certificate2Collection>((_certificateCache?.Count ?? 0) + 1);
-                    if (_certificateCache != null)
-                    {
-                        foreach (var existingCertificate in _certificateCache)
-                            certificateCache.Add(existingCertificate.Key, existingCertificate.Value);
-                    }
-                    certificateCache[sslCertificateFile] = clientCertificates;
-                    _certificateCache = certificateCache;
+                if (_certificateCache?.TryGetValue(sslCertificateFile, out clientCertificates) == true)
                     return clientCertificates;
+
+                InternalLogger.Debug("Loading SSL certificate from file: {1}", sslCertificateFile);
+                clientCertificates = LoadCertificateFromFile(sslCertificateFile, sslCertificatePassword);
+
+                var certificateCache = new Dictionary<string, X509Certificate2Collection>((_certificateCache?.Count ?? 0) + 1);
+                if (_certificateCache != null)
+                {
+                    foreach (var existingCertificate in _certificateCache)
+                        certificateCache.Add(existingCertificate.Key, existingCertificate.Value);
                 }
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Error(ex, "{0}: Failed loading SSL certificate from file: {1}", this, sslCertificateFile);
-                throw new NLogRuntimeException($"NetworkTarget: Failed loading SSL certificate from file: {sslCertificateFile}", ex);
+                certificateCache[sslCertificateFile] = clientCertificates;
+                _certificateCache = certificateCache;
+                return clientCertificates;
             }
         }
 
