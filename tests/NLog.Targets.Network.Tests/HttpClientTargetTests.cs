@@ -167,32 +167,6 @@ namespace NLog.Targets.Network
         }
 
         [Fact]
-        public void Authorization_BearerToken_IsSentAsHeader()
-        {
-            using (var server = new SimpleHttpServer())
-            {
-                var target = new HttpClientTarget
-                {
-                    Url = $"http://127.0.0.1:{server.Port}/logs",
-                    Layout = "${message}",
-                    Authorization = "Bearer mytoken123",
-                };
-
-                using (var logFactory = BuildLogFactory(target))
-                {
-                    var logger = logFactory.GetLogger("TestLogger");
-                    logger.Info("hello");
-                    logFactory.Flush();
-                }
-
-                var requests = server.WaitForRequests(1);
-                Assert.Single(requests);
-                Assert.True(requests[0].Headers.TryGetValue("Authorization", out var authValue));
-                Assert.Equal("Bearer mytoken123", authValue);
-            }
-        }
-
-        [Fact]
         public void ContentType_CustomValue_IsReflectedInHeader()
         {
             using (var server = new SimpleHttpServer())
@@ -256,6 +230,7 @@ namespace NLog.Targets.Network
                     Url = $"http://127.0.0.1:{server.Port}/logs",
                     Layout = "${message}",
                 };
+                target.Headers.Add(new TargetPropertyWithContext { Name = "Authorization", Layout = "Bearer mytoken123" });
                 target.Headers.Add(new TargetPropertyWithContext { Name = "X-Custom-Header", Layout = "custom-value" });
 
                 using (var logFactory = BuildLogFactory(target))
@@ -267,8 +242,10 @@ namespace NLog.Targets.Network
 
                 var requests = server.WaitForRequests(1);
                 Assert.Single(requests);
-                Assert.True(requests[0].Headers.TryGetValue("X-Custom-Header", out var headerValue));
-                Assert.Equal("custom-value", headerValue);
+                Assert.True(requests[0].Headers.TryGetValue("X-Custom-Header", out var customHeader));
+                Assert.Equal("custom-value", customHeader);
+                Assert.True(requests[0].Headers.TryGetValue("Authorization", out var authorizationHeader));
+                Assert.Equal("Bearer mytoken123", authorizationHeader);
             }
         }
 

@@ -139,7 +139,6 @@ namespace NLog.Targets
         ///
         /// This can introduce additional latency for the http-request, especially when http-server does not support the protocol.
         /// </summary>
-        /// <remarks>Default: <see langword="false"/></remarks>
         public bool? Expect100Continue
         {
             get => _expect100Continue;
@@ -150,22 +149,11 @@ namespace NLog.Targets
                 SignalHttpClientReset();
             }
         }
-        private bool? _expect100Continue = false;
-
-        /// <summary>
-        /// Authorization-header to use with the http-request
-        /// </summary>
-        public Layout? Authorization
-        {
-            get => _authorization;
-            set
-            {
-                if (ReferenceEquals(value, _authorization)) return;
-                _authorization = value;
-                SignalHttpClientReset();
-            }
-        }
-        private Layout? _authorization;
+        private bool? _expect100Continue
+#if NETFRAMEWORK
+            = false
+#endif
+            ;
 
         /// <summary>
         /// Gets or sets the line ending mode to use when batching log events.
@@ -195,17 +183,48 @@ namespace NLog.Targets
         }
         private int _sendTimeoutSeconds = 30;
 
+        /// <summary>
+        /// Gets or sets the Network credentials to use for HTTP authentication.
+        /// </summary>
+        /// <remarks>Explicit Empty/Blank String means use default network credentials (NTLM Windows Authentication)</remarks>
+        public Layout? NetworkUserName
+        {
+            get => _networkUserName;
+            set
+            {
+                if (ReferenceEquals(value, _networkUserName)) return;
+                _networkUserName = value;
+                SignalHttpClientReset();
+            }
+        }
+        private Layout? _networkUserName;
+
+        /// <summary>
+        /// Gets or sets the Network credentials to use for HTTP authentication.
+        /// </summary>
+        /// <remarks>Empty/Blank String means use default credentials</remarks>
+        public Layout? NetworkPassword
+        {
+            get => _networkPassword;
+            set
+            {
+                if (ReferenceEquals(value, _networkPassword)) return;
+                _networkPassword = value;
+                SignalHttpClientReset();
+            }
+        }
+        private Layout? _networkPassword;
+
 #if !NETFRAMEWORK || NET471_OR_GREATER
         /// <summary>
         /// Gets or sets the file path to a client SSL certificate for mutual TLS (mTLS) authentication.
         /// </summary>
-        /// <remarks>Supports PFX and PEM certificate files</remarks>
         public Layout? SslCertificateFile
         {
             get => _sslCertificateFile;
             set
             {
-                if (value == _sslCertificateFile) return;
+                if (ReferenceEquals(value, _sslCertificateFile)) return;
                 _sslCertificateFile = value;
                 SignalHttpClientReset();
             }
@@ -220,7 +239,7 @@ namespace NLog.Targets
             get => _sslCertificatePassword;
             set
             {
-                if (value == _sslCertificatePassword) return;
+                if (ReferenceEquals(value, _sslCertificatePassword)) return;
                 _sslCertificatePassword = value;
                 SignalHttpClientReset();
             }
@@ -249,6 +268,7 @@ namespace NLog.Targets
         /// <summary>
         /// Gets or sets the URL of the proxy server used for HTTP requests.
         /// </summary>
+        /// <remarks>Explicit Empty/Blank String means default proxy</remarks>
         public Layout? ProxyUrl
         {
             get => _proxyUrl;
@@ -587,6 +607,7 @@ namespace NLog.Targets
         private HttpClient CreateNewHttpClient(Uri? url)
         {
             var nullEvent = LogEventInfo.CreateNullEvent();
+
             var baseAddress = url?.ToString() ?? Url?.Render(nullEvent);
             if (_httpClientCreatedTime == DateTime.MinValue)
                 NLog.Common.InternalLogger.Info("{0}: Creating HttpClient for BaseAddress: {1}", this, baseAddress);
@@ -595,11 +616,7 @@ namespace NLog.Targets
             if (!Uri.TryCreate(baseAddress, UriKind.Absolute, out var baseAddressUri))
                 throw new NLogRuntimeException($"Invalid {nameof(Url)} specified for {nameof(HttpClientTarget)}: {baseAddress}");
 
-            var proxyAddress = ProxyUrl?.Render(nullEvent) ?? string.Empty;
-            Uri? proxyUri = null;
-            if (!string.IsNullOrWhiteSpace(proxyAddress) && !Uri.TryCreate(proxyAddress, UriKind.Absolute, out proxyUri))
-                throw new NLogRuntimeException($"Invalid {nameof(ProxyUrl)} specified for {nameof(HttpClientTarget)}: {proxyAddress}");
-
+            
             var handler = new HttpClientHandler();
 
 #if !NETFRAMEWORK || NET471_OR_GREATER
@@ -635,19 +652,28 @@ namespace NLog.Targets
             }
 #endif
 
-            if (proxyUri != null)
+            var networkUserName = NetworkUserName?.Render(nullEvent)?.Trim() ?? string.Empty;
+            if (NetworkUserName != null)
             {
+                handler.PreAuthenticate = true; // Authorization header included upfront (instead of waiting for 401-challenge from server) to avoid extra round-trip and latency
+                if (string.IsNullOrWhiteSpace(networkUserName))
+                {
+                    handler.Credentials = CredentialCache.DefaultCredentials;
+                }
+                else
+                {
+                    var networkPassword = NetworkPassword?.Render(nullEvent) ?? string.Empty;
+                    handler.Credentials = new NetworkCredential(networkUserName, networkPassword);
+                }
+            }
+
+            if (ProxyUrl != null)
+            {
+                var proxyAddress = ProxyUrl?.Render(nullEvent) ?? string.Empty;
                 var proxyUser = ProxyUser?.Render(nullEvent) ?? string.Empty;
                 var proxyPassword = ProxyPassword?.Render(nullEvent) ?? string.Empty;
-                var useDefaultCredentials = string.IsNullOrWhiteSpace(proxyUser);
                 handler.UseProxy = true;
-                handler.Proxy = CreateWebProxy(proxyUri, proxyUser, proxyPassword, useDefaultCredentials);
-#if NET || NETSTANDARD2_1_OR_GREATER || NET471_OR_GREATER
-                if (useDefaultCredentials)
-                {
-                    handler.UseDefaultCredentials = useDefaultCredentials;
-                }
-#endif
+                handler.Proxy = CreateWebProxy(proxyAddress, proxyUser, proxyPassword);
             }
             else
             {
@@ -681,23 +707,27 @@ namespace NLog.Targets
                 var headerValue = header.Layout?.Render(nullEvent) ?? string.Empty;
                 if (string.IsNullOrWhiteSpace(headerValue) && !header.IncludeEmptyValue)
                     continue;
-                newHttpClient.DefaultRequestHeaders.Add(headerName, headerValue);
+                newHttpClient.DefaultRequestHeaders.TryAddWithoutValidation(headerName, headerValue);
             }
 
-            var authorization = Authorization?.Render(nullEvent) ?? string.Empty;
-            if (!string.IsNullOrWhiteSpace(authorization))
-                newHttpClient.DefaultRequestHeaders.Authorization = GetAuthorizationHeader(authorization);
 
             return newHttpClient;
         }
 
-        private static WebProxy CreateWebProxy(Uri proxyUrl, string proxyUser, string proxyPassword, bool useDefaultCredentials)
+        private static IWebProxy CreateWebProxy(string proxyAddress, string proxyUser, string proxyPassword)
         {
-            var proxy = new WebProxy(proxyUrl)
+            if (string.IsNullOrEmpty(proxyAddress))
+                return WebRequest.DefaultWebProxy;
+
+            if (!Uri.TryCreate(proxyAddress, UriKind.Absolute, out var proxyUri))
+                throw new NLogRuntimeException($"Invalid {nameof(ProxyUrl)} specified for {nameof(HttpClientTarget)}: {proxyAddress}");
+
+            var proxy = new WebProxy(proxyUri);
+            if (string.IsNullOrEmpty(proxyUser))
             {
-                UseDefaultCredentials = useDefaultCredentials
-            };
-            if (!useDefaultCredentials)
+                proxy.UseDefaultCredentials = true;
+            }
+            else
             {
                 var cred = proxyUser.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
                 proxy.Credentials = cred.Length == 1
@@ -712,14 +742,6 @@ namespace NLog.Targets
             }
 
             return proxy;
-        }
-
-        private static AuthenticationHeaderValue GetAuthorizationHeader(string authorization)
-        {
-            var parts = authorization.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            return parts.Length == 1
-                ? new AuthenticationHeaderValue(parts[0])
-                : new AuthenticationHeaderValue(parts[0], string.Join(" ", parts.Skip(1)));
         }
     }
 }
