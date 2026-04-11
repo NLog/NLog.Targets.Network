@@ -446,11 +446,12 @@ namespace NLog.Targets
                     Layout.Render(logEvents[startIndex], sb);
                     if (sb.Length < MaxPayloadSizeBytes)
                     {
+                        var newlineDelimeter = BatchAsJsonArray ? ", " : newLineCharacters;
                         batchSize = endIndex - startIndex;
                         for (int i = startIndex + 1; i < endIndex; ++i)
                         {
                             var orgLength = sb.Length;
-                            sb.Append(BatchAsJsonArray ? ", " : newLineCharacters);
+                            sb.Append(newlineDelimeter);
                             Layout.Render(logEvents[i], sb);
                             if (sb.Length >= MaxPayloadSizeBytes)
                             {
