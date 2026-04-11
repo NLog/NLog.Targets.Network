@@ -39,7 +39,6 @@ namespace NLog.Targets
     using System.Collections.Generic;
     using System.IO;
     using System.IO.Compression;
-    using System.Linq;
     using System.Net;
     using System.Net.Http;
     using System.Net.Http.Headers;
@@ -351,34 +350,31 @@ namespace NLog.Targets
         }
 
         /// <inheritdoc />
-        protected override Task WriteAsyncTask(IList<LogEventInfo> logEvents, CancellationToken cancellationToken)
+        protected override async Task WriteAsyncTask(IList<LogEventInfo> logEvents, CancellationToken cancellationToken)
         {
             if (logEvents.Count == 0)
-                return Task.CompletedTask;
+                return;
 
             int lastBatchSize = 0;
-            var httpContent = Compress == NetworkTargetCompressionType.None ? BuildChunk(logEvents, out lastBatchSize) : CompressChunk(logEvents, out lastBatchSize);
-            if (lastBatchSize == logEvents.Count)
+            var httpContent = Compress == NetworkTargetCompressionType.None ? BuildChunk(logEvents, 0, out lastBatchSize) : CompressChunk(logEvents, 0, out lastBatchSize);
             {
-                var sendTask = HttpClientSendAsync(null, httpContent, cancellationToken);
-                sendTask.ContinueWith(t => t.Result?.Dispose());
-                return sendTask;
-
+                using var _ = await HttpClientSendAsync(null, httpContent, cancellationToken).ConfigureAwait(false);
             }
-            return HttpSendBatchesAsync(lastBatchSize, logEvents, httpContent, cancellationToken);
+            if (lastBatchSize != logEvents.Count)
+            {
+                await HttpSendBatchesAsync(lastBatchSize, logEvents, cancellationToken).ConfigureAwait(false);
+            }
         }
 
-        private async Task HttpSendBatchesAsync(int lastBatchSize, IList<LogEventInfo> logEvents, HttpContent httpContent, CancellationToken cancellationToken)
+        private async Task HttpSendBatchesAsync(int lastBatchSize, IList<LogEventInfo> logEvents, CancellationToken cancellationToken)
         {
-            {
-                using var _  = await HttpClientSendAsync(null, httpContent, cancellationToken).ConfigureAwait(false);
-            }
-            while (lastBatchSize != logEvents.Count)
+            int batchStartIndex = lastBatchSize;
+            while (batchStartIndex < logEvents.Count)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                logEvents = logEvents.Skip(lastBatchSize).ToList();
-                httpContent = Compress == NetworkTargetCompressionType.None ? BuildChunk(logEvents, out lastBatchSize) : CompressChunk(logEvents, out lastBatchSize);
+                var httpContent = Compress == NetworkTargetCompressionType.None ? BuildChunk(logEvents, batchStartIndex, out lastBatchSize) : CompressChunk(logEvents, batchStartIndex, out lastBatchSize);
                 using var _ = await HttpClientSendAsync(null, httpContent, cancellationToken).ConfigureAwait(false);
+                batchStartIndex += lastBatchSize;
             }
         }
 
@@ -430,9 +426,10 @@ namespace NLog.Targets
             }
         }
 
-        private HttpContent BuildChunk(IList<LogEventInfo> logEvents, out int batchSize)
+        private HttpContent BuildChunk(IList<LogEventInfo> logEvents, int startIndex, out int batchSize)
         {
             var newLineCharacters = LineEnding.NewLineCharacters;
+            var endIndex = logEvents.Count;
 
             batchSize = 1;
 
@@ -446,11 +443,11 @@ namespace NLog.Targets
                     if (BatchAsJsonArray)
                         sb.Append('[');
 
-                    Layout.Render(logEvents[0], sb);
+                    Layout.Render(logEvents[startIndex], sb);
                     if (sb.Length < MaxPayloadSizeBytes)
                     {
-                        batchSize = logEvents.Count;
-                        for (int i = 1; i < logEvents.Count; ++i)
+                        batchSize = endIndex - startIndex;
+                        for (int i = startIndex + 1; i < endIndex; ++i)
                         {
                             var orgLength = sb.Length;
                             sb.Append(BatchAsJsonArray ? ", " : newLineCharacters);
@@ -458,7 +455,7 @@ namespace NLog.Targets
                             if (sb.Length >= MaxPayloadSizeBytes)
                             {
                                 sb.Length = orgLength;   // Remove last rendered log that caused overflow
-                                batchSize = i;
+                                batchSize = i - startIndex;
                                 break;
                             }
                         }
@@ -478,9 +475,10 @@ namespace NLog.Targets
             }
         }
 
-        private HttpContent CompressChunk(IList<LogEventInfo> logEvents, out int batchSize)
+        private HttpContent CompressChunk(IList<LogEventInfo> logEvents, int startIndex, out int batchSize)
         {
-            batchSize = logEvents.Count;
+            var endIndex = logEvents.Count;
+            batchSize = endIndex - startIndex;
 
             var output = new MemoryStream();
             var compressionLevel = Compress == NetworkTargetCompressionType.GZipFast ? CompressionLevel.Fastest : CompressionLevel.Optimal;
@@ -493,13 +491,13 @@ namespace NLog.Targets
                     if (BatchAsJsonArray)
                         streamWriter.Write('[');
 
-                    for (int i = 0; i < logEvents.Count; ++i)
+                    for (int i = startIndex; i < endIndex; ++i)
                     {
-                        if (i > 0)
+                        if (i > startIndex)
                         {
                             if (output.Position >= MaxPayloadSizeBytes)
                             {
-                                batchSize = i;
+                                batchSize = i - startIndex;
                                 break;
                             }
                             streamWriter.Write(BatchAsJsonArray ? ", " : newLineCharacters);
