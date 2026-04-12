@@ -500,13 +500,13 @@ namespace NLog.Targets
 
         private HttpContent CompressChunk(MemoryStream output, IList<LogEventInfo> logEvents, int startIndex, out int batchSize)
         {
+            var newlineDelimeter = BatchAsJsonArray ? ", " : LineEnding.NewLineCharacters;
             var endIndex = logEvents.Count;
             batchSize = endIndex - startIndex;
 
             output.Position = 0;
             output.SetLength(0);
             var compressionLevel = Compress == NetworkTargetCompressionType.GZipFast ? CompressionLevel.Fastest : CompressionLevel.Optimal;
-            var newLineCharacters = LineEnding.NewLineCharacters;
 
             using (var gzipStream = new GZipStream(output, compressionLevel, true))
             {
@@ -524,7 +524,7 @@ namespace NLog.Targets
                                 batchSize = i - startIndex;
                                 break;
                             }
-                            streamWriter.Write(BatchAsJsonArray ? ", " : newLineCharacters);
+                            streamWriter.Write(newlineDelimeter);
                         }
                         RenderLogEventForChunk(logEvents[i], streamWriter);
                     }
@@ -680,7 +680,7 @@ namespace NLog.Targets
                 catch (Exception ex)
                 {
                     Common.InternalLogger.Error(ex, "{0}: Failed loading SSL certificate from file: {1}", this, sslCertificateFile);
-                    throw new NLogRuntimeException($"NetworkTarget: Failed loading SSL certificate from file: {sslCertificateFile}", ex);
+                    throw new NLogRuntimeException($"{GetType()}: Failed loading SSL certificate from file: {sslCertificateFile}", ex);
                 }
             }
 #endif
