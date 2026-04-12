@@ -709,7 +709,7 @@ namespace NLog.Targets
                 if (_certificateCache?.TryGetValue(sslCertificateFile, out clientCertificates) == true)
                     return clientCertificates;
 
-                InternalLogger.Debug("Loading SSL certificate from file: {1}", sslCertificateFile);
+                InternalLogger.Debug("Loading SSL certificate from file: {0}", sslCertificateFile);
                 clientCertificates = LoadCertificateFromFile(sslCertificateFile, sslCertificatePassword);
 
                 var certificateCache = new Dictionary<string, X509Certificate2Collection>((_certificateCache?.Count ?? 0) + 1);
