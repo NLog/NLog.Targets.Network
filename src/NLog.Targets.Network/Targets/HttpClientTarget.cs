@@ -119,9 +119,9 @@ namespace NLog.Targets
         private MediaTypeHeaderValue _contentTypeHeader = new MediaTypeHeaderValue("application/json") { CharSet = _utf8Encoding.WebName };
 
         /// <summary>
-        /// KeepAlive-header to use with the http-request
+        /// KeepAlive-header to ensure the TCP-connections are kept alive and reused, instead of each HTTP-request pays for connection establishment.
         /// </summary>
-        /// <remarks>Default: <see langword="false"/></remarks>
+        /// <remarks>Default: <see langword="true"/></remarks>
         public bool KeepAlive
         {
             get => _keepAlive;
@@ -132,7 +132,7 @@ namespace NLog.Targets
                 SignalHttpClientReset();
             }
         }
-        private bool _keepAlive;
+        private bool _keepAlive = true;
 
         /// <summary>
         /// Get or sets whether to expect http 100-Continue behavior, where the client sends headers and expects the http-server to reply with http-status 100-continue before sending the http-request body.
@@ -649,7 +649,6 @@ namespace NLog.Targets
             if (!Uri.TryCreate(baseAddress, UriKind.Absolute, out var baseAddressUri))
                 throw new NLogRuntimeException($"Invalid {nameof(Url)} specified for {nameof(HttpClientTarget)}: {baseAddress}");
 
-            
             var handler = new HttpClientHandler();
 
 #if !NETFRAMEWORK || NET471_OR_GREATER
@@ -720,14 +719,10 @@ namespace NLog.Targets
             if (SendTimeoutSeconds > 0)
                 newHttpClient.Timeout = TimeSpan.FromSeconds(SendTimeoutSeconds);
 
-            if (!KeepAlive)
-            {
-                newHttpClient.DefaultRequestHeaders.ConnectionClose = true;
-            }
+            if (KeepAlive)
+                newHttpClient.DefaultRequestHeaders.Connection.Add("keep-alive");
             else
-            {
-                newHttpClient.DefaultRequestHeaders.Add("Keep-Alive", "timeout=5, max=1000");
-            }
+                newHttpClient.DefaultRequestHeaders.ConnectionClose = true; // Closes TCP connection after each request (Disables HTTP Keep-Alive)
 
             if (Expect100Continue.HasValue)
                 newHttpClient.DefaultRequestHeaders.ExpectContinue = Expect100Continue.Value;
