@@ -52,9 +52,9 @@ namespace NLog.Targets
     /// Sends log messages to HTTP Web-server using either HTTP or HTTPS with support for batching and compression.
     /// </summary>
     /// <remarks>
-    /// <a href="https://github.com/nlog/nlog/wiki/HttpClient-target">See NLog Wiki</a>
+    /// <a href="https://github.com/NLog/NLog/wiki/HttpClient-target">See NLog Wiki</a>
     /// </remarks>
-    /// <seealso href="https://github.com/nlog/nlog/wiki/HttpClient-target">Documentation on NLog Wiki</seealso>
+    /// <seealso href="https://github.com/NLog/NLog/wiki/HttpClient-target">Documentation on NLog Wiki</seealso>
     [Target("HttpClient")]
     public class HttpClientTarget : AsyncTaskTarget
     {
@@ -112,7 +112,8 @@ namespace NLog.Targets
             {
                 if (value == _contentType) return;
                 _contentType = string.IsNullOrWhiteSpace(value) ? "application/json" : value;
-                _contentTypeHeader = new MediaTypeHeaderValue(_contentType) { CharSet = _utf8Encoding.WebName };
+                var isTextContentType = _contentType.IndexOf("text", StringComparison.OrdinalIgnoreCase) >= 0 || _contentType.IndexOf("json", StringComparison.OrdinalIgnoreCase) >= 0 || _contentType.IndexOf("xml", StringComparison.OrdinalIgnoreCase) >= 0;
+                _contentTypeHeader = new MediaTypeHeaderValue(_contentType) { CharSet = isTextContentType ? _utf8Encoding.WebName : null };
             }
         }
         private string _contentType = "application/json";
@@ -404,13 +405,13 @@ namespace NLog.Targets
         /// Send an HTTP request as an asynchronous operation.
         /// </summary>
         /// <remarks>Support custom <see cref="HttpClientTarget"/> overrides of WriteAsyncTask, that calls with custom ByteArrayContent / StreamContent</remarks>
-        /// <param name="baseAddress">Override the <see cref="HttpClient.BaseAddress"/></param>
+        /// <param name="url">Override the default <see cref="HttpClient.BaseAddress"/></param>
         /// <param name="httpContent">The contents of the HTTP message</param>
         /// <param name="cancellationToken">The cancellation token to cancel operation.</param>
         /// <returns>HTTP response with status-code and data (Remember to Dispose the response)</returns>
-        protected async Task<HttpResponseMessage> HttpClientSendAsync(Uri? baseAddress, HttpContent httpContent, CancellationToken cancellationToken)
+        protected async Task<HttpResponseMessage> HttpClientSendAsync(Uri? url, HttpContent httpContent, CancellationToken cancellationToken)
         {
-            var httpClient = ResetHttpClientIfNeeded(baseAddress);
+            var httpClient = ResetHttpClientIfNeeded(url);
 
             HttpStatusCode httpStatusCode = default(HttpStatusCode);
 
@@ -418,8 +419,13 @@ namespace NLog.Targets
             {
                 using var httpRequest = new HttpRequestMessage(_httpMethod, string.Empty) { Content = httpContent };
                 httpRequest.Content.Headers.ContentType = _contentTypeHeader;
+
+                var startTickCount = Environment.TickCount;
+
                 var httpResponseMessage = await httpClient.SendAsync(httpRequest, cancellationToken).ConfigureAwait(false);
                 httpStatusCode = httpResponseMessage.StatusCode;
+                Common.InternalLogger.Debug("{0}: HTTP request completed after {1}ms with http-status-code {2}", this, (Environment.TickCount - startTickCount), (int)httpStatusCode);
+
                 try
                 {
                     httpResponseMessage.EnsureSuccessStatusCode();  // Throw if not a success code to trigger retry
@@ -450,7 +456,7 @@ namespace NLog.Targets
 
         private HttpContent BuildChunk(MemoryStream output, IList<LogEventInfo> logEvents, int startIndex, out int batchSize)
         {
-            var newlineDelimeter = BatchAsJsonArray ? ", " : LineEnding.NewLineCharacters;
+            var newlineDelimiter = BatchAsJsonArray ? ", " : LineEnding.NewLineCharacters;
             var endIndex = logEvents.Count;
 
             batchSize = 1;
@@ -472,7 +478,7 @@ namespace NLog.Targets
                         for (int i = startIndex + 1; i < endIndex; ++i)
                         {
                             var orgLength = sb.Length;
-                            sb.Append(newlineDelimeter);
+                            sb.Append(newlineDelimiter);
                             Layout.Render(logEvents[i], sb);
                             if (sb.Length >= MaxPayloadSizeBytes)
                             {
@@ -580,22 +586,21 @@ namespace NLog.Targets
             var totalLength = payload.Length;
             lock (_reusableEncodingBuffer)
             {
-                var currentPosition = (int)output.Position;
                 if (totalLength < _reusableEncodingBuffer.Length)
                 {
                     payload.CopyTo(0, _reusableEncodingBuffer, 0, totalLength);
                     var byteCount = encoder.GetByteCount(_reusableEncodingBuffer, 0, totalLength);
-                    output.SetLength(currentPosition + byteCount);
-                    encoder.GetBytes(_reusableEncodingBuffer, 0, totalLength, output.GetBuffer(), currentPosition);
-                    output.Position = currentPosition + byteCount;
+                    output.SetLength(byteCount);
+                    encoder.GetBytes(_reusableEncodingBuffer, 0, totalLength, output.GetBuffer(), 0);
+                    output.Position = byteCount;
                 }
                 else
                 {
                     var payloadString = payload.ToString();
                     var byteCount = encoder.GetByteCount(payloadString);
-                    output.SetLength(currentPosition + byteCount);
-                    encoder.GetBytes(payloadString, 0, payloadString.Length, output.GetBuffer(), currentPosition);
-                    output.Position = currentPosition + byteCount;
+                    output.SetLength(byteCount);
+                    encoder.GetBytes(payloadString, 0, payloadString.Length, output.GetBuffer(), 0);
+                    output.Position = byteCount;
                 }
             }
         }
@@ -615,13 +620,13 @@ namespace NLog.Targets
             lock (_reusableEncodingBuffer)
             {
                 oldHttpClient = _httpClient;
-                if (utcNow - _httpClientCreatedTime < _httpClientLifeTime && oldHttpClient != null)
+                if (utcNow - _httpClientCreatedTime < _httpClientLifeTime && oldHttpClient != null && (url is null || oldHttpClient.BaseAddress.Equals(url)))
                     return oldHttpClient;
 
                 _httpClient = null;
                 oldHttpClient?.Dispose();
                 _httpClient = oldHttpClient = CreateNewHttpClient(url);
-                _httpClientCreatedTime = DateTime.UtcNow;
+                _httpClientCreatedTime = utcNow;
             }
 
             return oldHttpClient;

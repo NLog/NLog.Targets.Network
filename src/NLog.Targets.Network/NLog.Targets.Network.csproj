@@ -78,10 +78,6 @@ Changelog:
     <Reference Include="System.Net.Http" />
   </ItemGroup>
 
-  <ItemGroup Condition=" '$(TargetFrameworkIdentifier)' == '.NETFramework' And '$(TargetFramework)' != 'net35'  ">
-    <Reference Include="System.Net.Http" />
-  </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
     <PackageReference Include="NLog" Version="6.0.4" />
