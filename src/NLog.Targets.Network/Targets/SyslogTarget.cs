@@ -45,9 +45,9 @@ namespace NLog.Targets
     /// When using TCP then the default message-delimeter is octet-byte-count prefix, but it can be changed
     /// by setting <see cref="NetworkTarget.LineEnding"/> to <see cref="LineEndingMode.LF"/> or <see cref="LineEndingMode.Null"/>
     /// 
-    /// <a href="https://github.com/nlog/nlog/wiki/Syslog-target">See NLog Wiki</a>
+    /// <a href="https://github.com/NLog/NLog/wiki/Syslog-target">See NLog Wiki</a>
     /// </remarks>
-    /// <seealso href="https://github.com/nlog/nlog/wiki/Syslog-target">Documentation on NLog Wiki</seealso>
+    /// <seealso href="https://github.com/NLog/NLog/wiki/Syslog-target">Documentation on NLog Wiki</seealso>
     [Target("Syslog")]
     public class SyslogTarget : NetworkTarget
     {

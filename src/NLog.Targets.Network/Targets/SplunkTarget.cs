@@ -41,9 +41,9 @@ namespace NLog.Targets
     /// Sends log messages to Splunk server using either TCP or UDP with Splunk-JSON-format
     /// </summary>
     /// <remarks>
-    /// <a href="https://github.com/nlog/nlog/wiki/Splunk-target">See NLog Wiki</a>
+    /// <a href="https://github.com/NLog/NLog/wiki/Splunk-target">See NLog Wiki</a>
     /// </remarks>
-    /// <seealso href="https://github.com/nlog/nlog/wiki/Splunk-target">Documentation on NLog Wiki</seealso>
+    /// <seealso href="https://github.com/NLog/NLog/wiki/Splunk-target">Documentation on NLog Wiki</seealso>
     [Target("Splunk")]
     public class SplunkTarget : NetworkTarget
     {
