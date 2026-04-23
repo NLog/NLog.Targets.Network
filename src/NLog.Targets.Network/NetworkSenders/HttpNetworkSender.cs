@@ -34,9 +34,10 @@
 namespace NLog.Internal.NetworkSenders
 {
     using System;
-    using System.Net;
     using System.Net.Security;
     using System.Security.Cryptography.X509Certificates;
+    using System.Net.Http;
+    using NLog.Common;
 
     /// <summary>
     /// Network sender which uses HTTP or HTTPS POST.
@@ -45,7 +46,10 @@ namespace NLog.Internal.NetworkSenders
     {
         private readonly Uri _addressUri;
 
-        internal IWebRequestFactory HttpRequestFactory { get; set; } = WebRequestFactory.Instance;
+        private HttpClient? _httpClient;
+        private int _httpClientCreatedTick;
+
+        internal Func<HttpClient>? HttpClientFactory { get; set; }
 
         internal TimeSpan SendTimeout { get; set; }
 
@@ -68,77 +72,42 @@ namespace NLog.Internal.NetworkSenders
             var offset = eventArgs.RequestBufferOffset;
             var length = eventArgs.RequestBufferLength;
 
-            var webRequest = HttpRequestFactory.CreateWebRequest(_addressUri);
-            webRequest.Method = "POST";
-            if (SendTimeout > TimeSpan.Zero)
-            {
-                webRequest.Timeout = (int)SendTimeout.TotalMilliseconds;
-            }
+            var httpClient = GetOrCreateHttpClient();
+            var content = new ByteArrayContent(bytes, offset, length);
 
-            if (SslCertificateOverride != null)
+            httpClient.PostAsync(_addressUri, content).ContinueWith(task =>
             {
-                if (webRequest is HttpWebRequest httpWebRequest)
+                try
                 {
-                    if (SslCertificateOverride.Count > 0)
-                        httpWebRequest.ClientCertificates = SslCertificateOverride;
-#if NET45_OR_GREATER || !NETFRAMEWORK
-                    httpWebRequest.ServerCertificateValidationCallback = UserCertificateValidationCallback;
-#endif
-                }
-            }
-
-            AsyncCallback onResponse =
-                r =>
-                {
-                    try
+                    if (task.IsFaulted)
                     {
-                        using (var response = webRequest.EndGetResponse(r))
-                        {
-                            // Response successfully read
-                        }
-
-                        // completed fine
+                        var ex = task.Exception?.InnerException ?? task.Exception;
+                        InternalLogger.Error(ex, "NetworkTarget: Error sending HTTP request to url={0}", _addressUri);
+                        CompleteRequest(_ => asyncContinuation(ex));
+                    }
+                    else if (task.IsCanceled)
+                    {
+                        throw new OperationCanceledException("HTTP POST request timed out.");
+                    }
+                    else
+                    {
+                        task.Result.EnsureSuccessStatusCode();
+                        task.Result.Dispose();
                         CompleteRequest(asyncContinuation);
                     }
-                    catch (Exception ex)
-                    {
-#if DEBUG
-                        if (LogManager.ThrowExceptions)
-                        {
-                            throw; // Throwing exceptions here will crash the entire application (.NET 2.0 behavior)
-                        }
-#endif
-
-                        CompleteRequest(_ => asyncContinuation(ex));
-                    }
-                };
-
-            AsyncCallback onRequestStream =
-                r =>
+                }
+                catch (Exception ex)
                 {
-                    try
-                    {
-                        using (var stream = webRequest.EndGetRequestStream(r))
-                        {
-                            stream.Write(bytes, offset, length);
-                        }
-
-                        webRequest.BeginGetResponse(onResponse, null);
-                    }
-                    catch (Exception ex)
-                    {
+                    InternalLogger.Error(ex, "NetworkTarget: Error sending HTTP request to url={0}", _addressUri);
 #if DEBUG
-                        if (LogManager.ThrowExceptions)
-                        {
-                            throw;  // Throwing exceptions here will crash the entire application (.NET 2.0 behavior)
-                        }
-#endif
-
-                        CompleteRequest(_ => asyncContinuation(ex));
+                    if (LogManager.ThrowExceptions)
+                    {
+                        throw;
                     }
-                };
-
-            webRequest.BeginGetRequestStream(onRequestStream, null);
+#endif
+                    CompleteRequest(_ => asyncContinuation(ex));
+                }
+            }, System.Threading.CancellationToken.None, System.Threading.Tasks.TaskContinuationOptions.DenyChildAttach, System.Threading.Tasks.TaskScheduler.Default);  // DenyChildAttach - Skip capture SynchronizationContext
         }
 
         private void CompleteRequest(Common.AsyncContinuation asyncContinuation)
@@ -150,7 +119,54 @@ namespace NLog.Internal.NetworkSenders
             }
         }
 
-        private static bool UserCertificateValidationCallback(object sender, object certificate, object chain, SslPolicyErrors sslPolicyErrors)
+        private HttpClient GetOrCreateHttpClient()
+        {
+            var httpClient = _httpClient;
+            if (httpClient != null)
+            {
+                var elapsedMilliseconds = Environment.TickCount - _httpClientCreatedTick;
+                if (elapsedMilliseconds < 300 * 1000)
+                    return httpClient;
+
+                _httpClient = null;
+                httpClient.Dispose();
+            }
+
+            _httpClientCreatedTick = Environment.TickCount;
+            if (HttpClientFactory != null)
+            {
+                _httpClient = HttpClientFactory();
+                return _httpClient;
+            }
+
+            var handler = new HttpClientHandler();
+            if (SslCertificateOverride != null)
+            {
+#if !NETFRAMEWORK || NET471_OR_GREATER
+                if (SslCertificateOverride.Count > 0)
+                    handler.ClientCertificates.AddRange(SslCertificateOverride);
+                handler.ServerCertificateCustomValidationCallback = UserCertificateValidationCallback;
+#endif
+            }
+
+            _httpClient = new HttpClient(handler);
+            if (SendTimeout > TimeSpan.Zero)
+                _httpClient.Timeout = SendTimeout;
+
+#if NETFRAMEWORK
+            _httpClient.DefaultRequestHeaders.ExpectContinue = false;   // Avoid "100-Continue" response which causes extra round-trip and delay
+#endif
+            return _httpClient;
+        }
+
+        protected override void DoClose(Common.AsyncContinuation continuation)
+        {
+            _httpClient?.Dispose();
+            _httpClient = null;
+            base.DoClose(continuation);
+        }
+
+        private static bool UserCertificateValidationCallback(HttpRequestMessage request, System.Security.Cryptography.X509Certificates.X509Certificate2? certificate, X509Chain? chain, SslPolicyErrors sslPolicyErrors)
         {
             if (sslPolicyErrors == SslPolicyErrors.None)
                 return true;

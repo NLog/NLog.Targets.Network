@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">17.0</VisualStudioVersion>
-    <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' AND '$(VisualStudioVersion)' &lt; '17.0' ">net35;net46;netstandard2.0</TargetFrameworks>
-    <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' ">net35;net46;netstandard2.0;netstandard2.1</TargetFrameworks>
+    <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' AND '$(VisualStudioVersion)' &lt; '17.0' ">net46;netstandard2.0</TargetFrameworks>
+    <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' ">net46;net471;netstandard2.0;netstandard2.1</TargetFrameworks>
 
     <VersionPrefix>6.0.4</VersionPrefix>
     <AssemblyVersion>6.0.0.0</AssemblyVersion>
@@ -66,6 +66,7 @@ Changelog:
   <ItemGroup Condition=" '$(TargetFrameworkIdentifier)' == '.NETFramework' ">
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Net.Http" />
   </ItemGroup>
 
   <ItemGroup>

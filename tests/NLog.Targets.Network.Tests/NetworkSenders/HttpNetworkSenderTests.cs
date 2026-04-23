@@ -34,11 +34,15 @@
 namespace NLog.Targets.Network
 {
     using System;
-    using System.Security.Authentication;
+    using System.IO;
+    using System.Net;
+    using System.Net.Http;
     using System.Security.Cryptography.X509Certificates;
+    using System.Threading;
+    using System.Threading.Tasks;
     using NLog.Config;
     using NLog.Internal.NetworkSenders;
-    using NSubstitute;
+    using NLog.Targets;
     using Xunit;
 
     public class HttpNetworkSenderTests
@@ -52,7 +56,6 @@ namespace NLog.Targets.Network
         /// Test <see cref="HttpNetworkSender"/> via <see cref="NetworkTarget"/>
         /// </summary>
         [Fact]
-        [Obsolete("WebRequest is obsolete. Use HttpClient instead.")]
         public void HttpNetworkSenderViaNetworkTargetTest()
         {
             // Arrange
@@ -65,8 +68,8 @@ namespace NLog.Targets.Network
                 MaxMessageSize = 0,
             };
 
-            var webRequestMock = new WebRequestMock();
-            var networkSenderFactoryMock = CreateNetworkSenderFactoryMock(webRequestMock);
+            var httpMessageHandlerMock = new HttpMessageHandlerMock();
+            var networkSenderFactoryMock = new NetworkSenderFactoryMock(httpMessageHandlerMock);
             networkTarget.SenderFactory = networkSenderFactoryMock;
 
             var logFactory = new LogFactory();
@@ -81,22 +84,12 @@ namespace NLog.Targets.Network
             logFactory.Flush();
 
             // Assert
-            var mock = webRequestMock;
-
-            var requestedString = mock.GetRequestContentAsString();
-
-            Assert.Equal("http://test.with.mock/", mock.RequestedAddress.ToString());
-            Assert.Equal("HttpHappyPathTestLogger|test message1|", requestedString);
-            Assert.Equal("POST", mock.Method);
-
-            networkSenderFactoryMock.Received(1).Create("http://test.with.mock", null, networkTarget);
-
-            // Cleanup
-            mock.Dispose();
+            Assert.Equal("http://test.with.mock/", httpMessageHandlerMock.RequestedAddress?.ToString());
+            Assert.Equal("HttpHappyPathTestLogger|test message1|", httpMessageHandlerMock.GetRequestContentAsString());
+            Assert.Equal(HttpMethod.Post, httpMessageHandlerMock.RequestMethod);
         }
 
         [Fact]
-        [Obsolete("WebRequest is obsolete. Use HttpClient instead.")]
         public void HttpNetworkSenderViaNetworkTargetRecoveryTest()
         {
             // Arrange
@@ -109,9 +102,9 @@ namespace NLog.Targets.Network
                 MaxMessageSize = 0,
             };
 
-            var webRequestMock = new WebRequestMock();
-            webRequestMock.FirstRequestMustFail = true;
-            var networkSenderFactoryMock = CreateNetworkSenderFactoryMock(webRequestMock);
+            var httpMessageHandlerMock = new HttpMessageHandlerMock();
+            httpMessageHandlerMock.FirstRequestMustFail = true;
+            var networkSenderFactoryMock = new NetworkSenderFactoryMock(httpMessageHandlerMock);
             networkTarget.SenderFactory = networkSenderFactoryMock;
 
             var logFactory = new LogFactory();
@@ -119,7 +112,7 @@ namespace NLog.Targets.Network
             config.AddRuleForAllLevels(networkTarget);
             logFactory.Configuration = config;
 
-            var logger = logFactory.GetLogger("HttpHappyPathTestLogger");
+            var logger = logFactory.GetLogger("HttpRecoveryPathTestLogger");
 
             // Act
             logger.Info("test message1");   // Will fail after short delay
@@ -127,31 +120,67 @@ namespace NLog.Targets.Network
             logFactory.Flush();
 
             // Assert
-            var mock = webRequestMock;
-
-            var requestedString = mock.GetRequestContentAsString();
-
-            Assert.Equal("http://test.with.mock/", mock.RequestedAddress.ToString());
-            Assert.Equal("HttpHappyPathTestLogger|test message2|", requestedString);
-            Assert.Equal("POST", mock.Method);
-
-            networkSenderFactoryMock.Received(1).Create("http://test.with.mock", null, networkTarget); // Only created one HttpNetworkSender
-
-            // Cleanup
-            mock.Dispose();
+            Assert.Equal("http://test.with.mock/", httpMessageHandlerMock.RequestedAddress?.ToString());
+            Assert.Equal("HttpRecoveryPathTestLogger|test message2|", httpMessageHandlerMock.GetRequestContentAsString());
+            Assert.Equal(HttpMethod.Post, httpMessageHandlerMock.RequestMethod);
         }
 
-        [Obsolete("WebRequest is obsolete. Use HttpClient instead.")]
-        private static INetworkSenderFactory CreateNetworkSenderFactoryMock(WebRequestMock webRequestMock)
+        private sealed class HttpMessageHandlerMock : HttpMessageHandler
         {
-            var networkSenderFactoryMock = Substitute.For<INetworkSenderFactory>();
+            public Uri RequestedAddress { get; private set; }
 
-            networkSenderFactoryMock.Create(Arg.Any<string>(), Arg.Any<X509Certificate2Collection>(), Arg.Any<NetworkTarget>())
-                .Returns(url => new HttpNetworkSender(url.Arg<string>())
+            public HttpMethod RequestMethod { get; private set; }
+
+            public bool FirstRequestMustFail { get; set; }
+
+            private byte[] _requestContent = Array.Empty<byte>();
+
+            protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                RequestedAddress = request.RequestUri;
+                RequestMethod = request.Method;
+
+                if (request.Content != null)
                 {
-                    HttpRequestFactory = new WebRequestFactoryMock(webRequestMock)
-                });
-            return networkSenderFactoryMock;
+                    _requestContent = await request.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+                }
+
+                if (FirstRequestMustFail)
+                {
+                    FirstRequestMustFail = false;
+                    _requestContent = Array.Empty<byte>();
+                    await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+                    throw new InvalidDataException("You are doomed");
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("new response 1")
+                };
+            }
+
+            public string GetRequestContentAsString()
+            {
+                return System.Text.Encoding.UTF8.GetString(_requestContent);
+            }
+        }
+
+        private sealed class NetworkSenderFactoryMock : INetworkSenderFactory
+        {
+            private readonly HttpMessageHandlerMock _httpMessageHandlerMock;
+
+            public NetworkSenderFactoryMock(HttpMessageHandlerMock httpMessageHandlerMock)
+            {
+                _httpMessageHandlerMock = httpMessageHandlerMock;
+            }
+
+            public QueuedNetworkSender Create(string url, X509Certificate2Collection sslCertificateOverride, NetworkTarget networkTarget)
+            {
+                return new HttpNetworkSender(url)
+                {
+                    HttpClientFactory = () => new HttpClient(_httpMessageHandlerMock, disposeHandler: false)
+                };
+            }
         }
     }
 }
