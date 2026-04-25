@@ -122,6 +122,7 @@ namespace NLog.Internal.NetworkSenders
 
             if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
             {
+#if !NET35
                 return new HttpNetworkSender(url)
                 {
                     MaxQueueSize = networkTarget.MaxQueueSize,
@@ -129,10 +130,14 @@ namespace NLog.Internal.NetworkSenders
                     SendTimeout = TimeSpan.FromSeconds(networkTarget.SendTimeoutSeconds),
                     SslCertificateOverride = sslCertificateOverride,
                 };
+#else
+                throw new ArgumentException("HTTP protocol is not supported on .NET Framework 3.5", nameof(url));
+#endif
             }
 
             if (url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             {
+#if !NET35
                 return new HttpNetworkSender(url)
                 {
                     MaxQueueSize = networkTarget.MaxQueueSize,
@@ -140,6 +145,10 @@ namespace NLog.Internal.NetworkSenders
                     SendTimeout = TimeSpan.FromSeconds(networkTarget.SendTimeoutSeconds),
                     SslCertificateOverride = sslCertificateOverride,
                 };
+#else
+                throw new ArgumentException("HTTPS protocol is not supported on .NET Framework 3.5", nameof(url));
+#endif
+
             }
 
             throw new ArgumentException("Unrecognized network address", nameof(url));
