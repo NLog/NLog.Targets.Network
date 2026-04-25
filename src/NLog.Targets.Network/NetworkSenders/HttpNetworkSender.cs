@@ -31,6 +31,8 @@
 // THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+#if !NET35
+
 namespace NLog.Internal.NetworkSenders
 {
     using System;
@@ -68,32 +70,50 @@ namespace NLog.Internal.NetworkSenders
         protected override void BeginRequest(NetworkRequestArgs eventArgs)
         {
             var asyncContinuation = eventArgs.AsyncContinuation;
-            var bytes = eventArgs.RequestBuffer;
-            var offset = eventArgs.RequestBufferOffset;
-            var length = eventArgs.RequestBufferLength;
 
-            var httpClient = GetOrCreateHttpClient();
-            var content = new ByteArrayContent(bytes, offset, length);
+            try
+            {
+                var bytes = eventArgs.RequestBuffer;
+                var offset = eventArgs.RequestBufferOffset;
+                var length = eventArgs.RequestBufferLength;
+                var content = new ByteArrayContent(bytes, offset, length);
+                var httpClient = GetOrCreateHttpClient();
+                PostAsync(asyncContinuation, content, httpClient);
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error(ex, "NetworkTarget: Error sending HTTP request to url={0}", _addressUri);
+#if DEBUG
+                    if (LogManager.ThrowExceptions)
+                    {
+                        throw;
+                    }
+#endif
+                CompleteRequest(_ => asyncContinuation(ex));
+            }
+        }
 
+        private void PostAsync(AsyncContinuation asyncContinuation, ByteArrayContent content, HttpClient httpClient)
+        {
             httpClient.PostAsync(_addressUri, content).ContinueWith(task =>
             {
                 try
                 {
+                    content.Dispose();
+
                     if (task.IsFaulted)
                     {
                         var ex = task.Exception?.InnerException ?? task.Exception;
                         InternalLogger.Error(ex, "NetworkTarget: Error sending HTTP request to url={0}", _addressUri);
                         CompleteRequest(_ => asyncContinuation(ex));
                     }
-                    else if (task.IsCanceled)
-                    {
-                        throw new OperationCanceledException("HTTP POST request timed out.");
-                    }
                     else
                     {
-                        task.Result.EnsureSuccessStatusCode();
-                        task.Result.Dispose();
-                        CompleteRequest(asyncContinuation);
+                        using (var result = task.Result)
+                        {
+                            result.EnsureSuccessStatusCode();
+                            CompleteRequest(asyncContinuation);
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -124,8 +144,9 @@ namespace NLog.Internal.NetworkSenders
             var httpClient = _httpClient;
             if (httpClient != null)
             {
+                // Recycle HttpClient every 5 minutes to avoid potential issues with DNS changes and stale connections.
                 var elapsedMilliseconds = Environment.TickCount - _httpClientCreatedTick;
-                if (elapsedMilliseconds < 300 * 1000)
+                if (elapsedMilliseconds > 0 && elapsedMilliseconds < 300 * 1000)
                     return httpClient;
 
                 _httpClient = null;
@@ -159,11 +180,30 @@ namespace NLog.Internal.NetworkSenders
             return _httpClient;
         }
 
-        protected override void DoClose(Common.AsyncContinuation continuation)
+        protected override void DoClose(AsyncContinuation continuation)
         {
-            _httpClient?.Dispose();
-            _httpClient = null;
-            base.DoClose(continuation);
+            base.DoClose(ex => CloseHttpClient(continuation, ex));
+        }
+
+        private void CloseHttpClient(AsyncContinuation continuation, Exception? pendingException)
+        {
+            try
+            {
+                var httpClient = _httpClient;
+                _httpClient = null;
+                httpClient?.Dispose();
+
+                continuation(pendingException);
+            }
+            catch (Exception exception)
+            {
+                if (LogManager.ThrowExceptions)
+                {
+                    throw;
+                }
+
+                continuation(exception);
+            }
         }
 
         private static bool UserCertificateValidationCallback(HttpRequestMessage request, System.Security.Cryptography.X509Certificates.X509Certificate2? certificate, X509Chain? chain, SslPolicyErrors sslPolicyErrors)
@@ -179,3 +219,5 @@ namespace NLog.Internal.NetworkSenders
         }
     }
 }
+
+#endif
