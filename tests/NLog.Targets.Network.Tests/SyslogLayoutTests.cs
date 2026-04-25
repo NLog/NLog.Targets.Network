@@ -55,7 +55,7 @@ namespace NLog.Targets.Network
         [Fact]
         public void SyslogLayout_Rfc3164()
         {
-            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() };
+            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() { Rfc3164 = true } };
             using (var logFactory = new LogFactory().Setup().LoadConfiguration(cfg => cfg.ForLogger().WriteTo(memTarget)).LogFactory)
             {
                 var logger = logFactory.GetCurrentClassLogger();
@@ -73,7 +73,7 @@ namespace NLog.Targets.Network
         [Fact]
         public void SyslogLayout_Rfc3164_Newline()
         {
-            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() };
+            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() { Rfc3164 = true } };
             using (var logFactory = new LogFactory().Setup().LoadConfiguration(cfg => cfg.ForLogger().WriteTo(memTarget)).LogFactory)
             {
                 var logger = logFactory.GetCurrentClassLogger();
@@ -97,7 +97,7 @@ namespace NLog.Targets.Network
         [InlineData("Fatal", "<136>")]
         public void SyslogLayout_Rfc3164_LogLevels(string logLevel, string priValue)
         {
-            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() { SyslogFacility = SyslogFacility.Local1 } };
+            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() { Rfc3164 = true, SyslogFacility = SyslogFacility.Local1 } };
             using (var logFactory = new LogFactory().Setup().LoadConfiguration(cfg => cfg.ForLogger().WriteTo(memTarget)).LogFactory)
             {
                 var logger = logFactory.GetCurrentClassLogger();
@@ -115,7 +115,7 @@ namespace NLog.Targets.Network
         [Fact]
         public void SyslogLayout_Rfc3164_EscapeNames()
         {
-            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() { SyslogHostName = " Hello World ", SyslogAppName = " Destroy World ", SyslogProcessId = " Goodbye World " } };
+            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() { Rfc3164 = true, SyslogHostName = " Hello World ", SyslogAppName = " Destroy World ", SyslogProcessId = " Goodbye World " } };
             using (var logFactory = new LogFactory().Setup().LoadConfiguration(cfg => cfg.ForLogger().WriteTo(memTarget)).LogFactory)
             {
                 var logger = logFactory.GetCurrentClassLogger();
@@ -133,7 +133,7 @@ namespace NLog.Targets.Network
         [Fact]
         public void SyslogLayout_Rfc5424()
         {
-            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() { Rfc5424 = true } };
+            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() };
             using (var logFactory = new LogFactory().Setup().LoadConfiguration(cfg => cfg.ForLogger().WriteTo(memTarget)).LogFactory)
             {
                 var logger = logFactory.GetCurrentClassLogger();
@@ -148,7 +148,7 @@ namespace NLog.Targets.Network
         [Fact]
         public void SyslogLayout_Rfc5424_Newline()
         {
-            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() { Rfc5424 = true } };
+            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() };
             using (var logFactory = new LogFactory().Setup().LoadConfiguration(cfg => cfg.ForLogger().WriteTo(memTarget)).LogFactory)
             {
                 var logger = logFactory.GetCurrentClassLogger();
@@ -169,7 +169,7 @@ namespace NLog.Targets.Network
         [InlineData("Fatal", "<136>")]
         public void SyslogLayout_Rfc5424_LogLevels(string logLevel, string priValue)
         {
-            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() { Rfc5424 = true, SyslogFacility = SyslogFacility.Local1 } };
+            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() { SyslogFacility = SyslogFacility.Local1 } };
             using (var logFactory = new LogFactory().Setup().LoadConfiguration(cfg => cfg.ForLogger().WriteTo(memTarget)).LogFactory)
             {
                 var logger = logFactory.GetCurrentClassLogger();
@@ -184,7 +184,7 @@ namespace NLog.Targets.Network
         [Fact]
         public void SyslogLayout_Rfc5424_EscapeNames()
         {
-            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() { Rfc5424 = true } };
+            var memTarget = new NLog.Targets.MemoryTarget() { Layout = new SyslogLayout() };
             using (var logFactory = new LogFactory().Setup().LoadConfiguration(cfg => cfg.ForLogger().WriteTo(memTarget)).LogFactory)
             {
                 var logger = logFactory.GetCurrentClassLogger();
@@ -199,7 +199,7 @@ namespace NLog.Targets.Network
         [Fact]
         public void SyslogLayout_Rfc5424_StructuredData()
         {
-            var syslogLayout = new SyslogLayout() { Rfc5424 = true };
+            var syslogLayout = new SyslogLayout();
             syslogLayout.StructuredDataParams.Add(new TargetPropertyWithContext(" ThreadId ", " ${threadid} "));
             syslogLayout.IncludeEventProperties = true;
 

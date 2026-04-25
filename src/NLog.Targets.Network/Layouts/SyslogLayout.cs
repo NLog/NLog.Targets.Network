@@ -255,13 +255,13 @@ namespace NLog.Layouts
             var appName = _appNameString ?? EscapePropertyName(SyslogAppName?.Render(logEvent) ?? string.Empty, AppNameMaxLength);
             var processId = _processIdString ?? EscapePropertyName(SyslogProcessId?.Render(logEvent) ?? string.Empty, ProcessIdMaxLength);
 
-            if (Rfc3164 || !Rfc5424)
+            if (Rfc5424 || !Rfc3164)
             {
-                Render_Rfc3164(logEvent, target, priValue, hostName, appName, processId);
+                Render_Rfc5424(logEvent, target, priValue, hostName, appName, processId);
             }
             else
             {
-                Render_Rfc5424(logEvent, target, priValue, hostName, appName, processId);
+                Render_Rfc3164(logEvent, target, priValue, hostName, appName, processId);
             }
         }
 
