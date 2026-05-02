@@ -65,6 +65,9 @@ namespace NLog.Targets
         private volatile HttpClient? _httpClient;
         private TimeSpan _httpClientLifeTime = TimeSpan.FromMinutes(5);
         private DateTime _httpClientCreatedTime = DateTime.MinValue;
+#if !NETFRAMEWORK || NET471_OR_GREATER
+        private readonly NLog.Internal.SslCertificateCache _sslCertificateCache = new NLog.Internal.SslCertificateCache();
+#endif
 
         /// <summary>
         /// EndPoint URL for the HTTP Web-server to send to
@@ -660,32 +663,36 @@ namespace NLog.Targets
             if (SslCertificateFile != null)
             {
                 var sslCertificateFile = SslCertificateFile.Render(nullEvent) ?? string.Empty;
-                try
+                if (!_sslCertificateCache.TryGetCertificate(sslCertificateFile, out var clientCertificates))
                 {
                     var sslCertificatePassword = SslCertificatePassword?.Render(nullEvent) ?? string.Empty;
-                    var clientCertificates = NetworkTarget.LoadSslCertificateFromFile(sslCertificateFile, sslCertificatePassword);
-                    if (clientCertificates?.Count > 0)
+                    try
                     {
-                        handler.ClientCertificateOptions = ClientCertificateOption.Manual;
-                        handler.ClientCertificates.AddRange(clientCertificates);
+                        clientCertificates = _sslCertificateCache.LoadCertificate(sslCertificateFile, sslCertificatePassword);
                     }
-                    handler.ServerCertificateCustomValidationCallback = static (message, certificate, chain, sslPolicyErrors) =>
+                    catch (Exception ex)
                     {
-                        if (sslPolicyErrors == System.Net.Security.SslPolicyErrors.None)
-                            return true;
-
-                        Common.InternalLogger.Warn("SSL certificate errors were encountered when establishing connection to the server: {0}, Certificate: {1}", sslPolicyErrors, certificate);
-                        if (certificate is null)
-                            return false;
-
-                        return true;
-                    };
+                        Common.InternalLogger.Error(ex, "{0}: Failed loading SSL certificate from file: {1}", this, sslCertificateFile);
+                        throw new NLogRuntimeException($"{GetType()}: Failed loading SSL certificate from file: {sslCertificateFile}", ex);
+                    }
                 }
-                catch (Exception ex)
+
+                if (clientCertificates?.Count > 0)
                 {
-                    Common.InternalLogger.Error(ex, "{0}: Failed loading SSL certificate from file: {1}", this, sslCertificateFile);
-                    throw new NLogRuntimeException($"{GetType()}: Failed loading SSL certificate from file: {sslCertificateFile}", ex);
+                    handler.ClientCertificateOptions = ClientCertificateOption.Manual;
+                    handler.ClientCertificates.AddRange(clientCertificates);
                 }
+                handler.ServerCertificateCustomValidationCallback = static (message, certificate, chain, sslPolicyErrors) =>
+                {
+                    if (sslPolicyErrors == System.Net.Security.SslPolicyErrors.None)
+                        return true;
+
+                    Common.InternalLogger.Warn("SSL certificate errors were encountered when establishing connection to the server: {0}, Certificate: {1}", sslPolicyErrors, certificate);
+                    if (certificate is null)
+                        return false;
+
+                    return true;
+                };
             }
 #endif
 

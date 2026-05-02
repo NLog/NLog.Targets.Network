@@ -35,7 +35,6 @@ namespace NLog.Targets
 {
     using System;
     using System.Collections.Generic;
-    using System.Security.Cryptography.X509Certificates;
     using System.Text;
     using System.Threading;
     using NLog.Common;
@@ -76,8 +75,7 @@ namespace NLog.Targets
         private readonly char[] _reusableEncodingBuffer = new char[32 * 1024];
         private readonly StringBuilder _reusableStringBuilder = new StringBuilder();
 
-        private static readonly object _certificateCacheLock = new object();
-        private static Dictionary<string, X509Certificate2Collection>? _certificateCache;
+        private readonly NLog.Internal.SslCertificateCache _sslCertificateCache = new NLog.Internal.SslCertificateCache();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NetworkTarget" /> class.
@@ -645,23 +643,26 @@ namespace NLog.Targets
 
         private NetworkSender CreateNetworkSender(string address, LogEventInfo logEventInfo)
         {
-            X509Certificate2Collection? sslCertificateOverride = null;
+            System.Security.Cryptography.X509Certificates.X509Certificate2Collection? clientCertificates = null;
             if (SslCertificateFile != null)
             {
                 var sslCertificateFile = SslCertificateFile.Render(logEventInfo) ?? string.Empty;
-                try
+                if (!_sslCertificateCache.TryGetCertificate(sslCertificateFile, out clientCertificates))
                 {
                     var sslCertificatePassword = SslCertificatePassword?.Render(logEventInfo) ?? string.Empty;
-                    sslCertificateOverride = LoadSslCertificateFromFile(sslCertificateFile, sslCertificatePassword);
-                }
-                catch (Exception ex)
-                {
-                    InternalLogger.Error(ex, "{0}: Failed loading SSL certificate from file: {1}", this, sslCertificateFile);
-                    throw new NLogRuntimeException($"{GetType()}: Failed loading SSL certificate from file: {sslCertificateFile}", ex);
+                    try
+                    {
+                        clientCertificates = _sslCertificateCache.LoadCertificate(sslCertificateFile, sslCertificatePassword);
+                    }
+                    catch (Exception ex)
+                    {
+                        InternalLogger.Error(ex, "{0}: Failed loading SSL certificate from file: {1}", this, sslCertificateFile);
+                        throw new NLogRuntimeException($"{GetType()}: Failed loading SSL certificate from file: {sslCertificateFile}", ex);
+                    }
                 }
             }
 
-            var sender = SenderFactory.Create(address, sslCertificateOverride, this);
+            var sender = SenderFactory.Create(address, clientCertificates, this);
             sender.Initialize();
             if (KeepConnection || LogEventDropped != null)
             {
@@ -699,151 +700,5 @@ namespace NLog.Targets
             sender.Send(payload, 0, payload.Length, continuation);
         }
 
-        internal static X509Certificate2Collection? LoadSslCertificateFromFile(string sslCertificateFile, string sslCertificatePassword)
-        {
-            if (_certificateCache != null && _certificateCache.TryGetValue(sslCertificateFile, out var clientCertificates))
-                return clientCertificates;  // Safe to lookup without lock, since immutable collection
-
-            lock (_certificateCacheLock)
-            {
-                if (_certificateCache?.TryGetValue(sslCertificateFile, out clientCertificates) == true)
-                    return clientCertificates;
-
-                InternalLogger.Debug("Loading SSL certificate from file: {0}", sslCertificateFile);
-                clientCertificates = LoadCertificateFromFile(sslCertificateFile, sslCertificatePassword);
-
-                var certificateCache = new Dictionary<string, X509Certificate2Collection>((_certificateCache?.Count ?? 0) + 1);
-                if (_certificateCache != null)
-                {
-                    foreach (var existingCertificate in _certificateCache)
-                        certificateCache.Add(existingCertificate.Key, existingCertificate.Value);
-                }
-                certificateCache[sslCertificateFile] = clientCertificates;
-                _certificateCache = certificateCache;
-                return clientCertificates;
             }
         }
-
-        internal static X509Certificate2Collection LoadCertificateFromFile(string sslCertificateFile, string sslCertificatePassword)
-        {
-            if (string.IsNullOrEmpty(sslCertificateFile))
-                return new X509Certificate2Collection();
-
-            if (sslCertificateFile.EndsWith(".pem", StringComparison.OrdinalIgnoreCase))
-            {
-                return LoadCertificateFromPem(sslCertificateFile, sslCertificatePassword);
-            }
-            else
-            {
-                return new X509Certificate2Collection(new X509Certificate2(sslCertificateFile, string.IsNullOrEmpty(sslCertificatePassword) ? null : sslCertificatePassword));
-            }
-        }
-
-        private static X509Certificate2Collection LoadCertificateFromPem(string fileName, string? password = null)
-        {
-            using (var reader = new System.IO.StreamReader(new System.IO.FileStream(fileName, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read), Encoding.UTF8))
-            {
-                var pem = reader.ReadToEnd();
-                var allCertificates = TryParseAllPemBlocks(pem, "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----");
-                if (allCertificates.Count == 0)
-                    throw new NLogRuntimeException("Invalid PEM format: Missing BEGIN CERTIFICATE header");
-
-                var leafCertificate = new X509Certificate2(allCertificates[0]);
-#if NET || NETSTANDARD2_1_OR_GREATER
-                var certWithKey = TryAttachPrivateKeyFromPem(pem, leafCertificate, password);
-                if (certWithKey != null)
-                {
-                    leafCertificate.Dispose();
-                    leafCertificate = certWithKey;
-                }
-#endif
-
-                var collection = new X509Certificate2Collection();
-                collection.Add(leafCertificate);
-                for (int i = 1; i < allCertificates.Count; i++)
-                {
-                    collection.Add(new X509Certificate2(allCertificates[i]));
-                }
-                return collection;
-            }
-        }
-
-        private static List<byte[]> TryParseAllPemBlocks(string pem, string header, string footer)
-        {
-            var results = new List<byte[]>();
-            int searchFrom = 0;
-            while (true)
-            {
-                int headerIndex = pem.IndexOf(header, searchFrom, StringComparison.Ordinal);
-                if (headerIndex < 0)
-                    break;
-
-                int start = headerIndex + header.Length;
-                int end = pem.IndexOf(footer, start, StringComparison.Ordinal);
-                if (end < 0)
-                    throw new NLogRuntimeException($"Invalid PEM format: Missing {footer}");
-
-                string base64 = pem.Substring(start, end - start).Replace("\r", "").Replace("\n", "").Trim();
-                if (string.IsNullOrEmpty(base64))
-                    throw new NLogRuntimeException($"Invalid PEM format: Missing content between {header} and {footer}");
-
-                results.Add(Convert.FromBase64String(base64));
-                searchFrom = end + footer.Length;
-            }
-            return results;
-        }
-
-#if NET || NETSTANDARD2_1_OR_GREATER
-        private static byte[]? TryParsePemBlock(string pem, string header, string footer)
-        {
-            var blocks = TryParseAllPemBlocks(pem, header, footer);
-            return blocks.Count > 0 ? blocks[0] : null;
-        }
-
-        private static X509Certificate2? TryAttachPrivateKeyFromPem(string pem, X509Certificate2 certificate, string? password)
-        {
-            byte[]? pkcs8Bytes = TryParsePemBlock(pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----");
-            byte[]? rsaPkcs1Bytes = pkcs8Bytes == null ? TryParsePemBlock(pem, "-----BEGIN RSA PRIVATE KEY-----", "-----END RSA PRIVATE KEY-----") : null;
-            byte[]? ecPrivKeyBytes = pkcs8Bytes == null ? TryParsePemBlock(pem, "-----BEGIN EC PRIVATE KEY-----", "-----END EC PRIVATE KEY-----") : null;
-            byte[]? encryptedPkcs8Bytes = (pkcs8Bytes == null && rsaPkcs1Bytes == null && ecPrivKeyBytes == null)
-                ? TryParsePemBlock(pem, "-----BEGIN ENCRYPTED PRIVATE KEY-----", "-----END ENCRYPTED PRIVATE KEY-----") : null;
-
-            if (pkcs8Bytes == null && rsaPkcs1Bytes == null && ecPrivKeyBytes == null && encryptedPkcs8Bytes == null)
-                return null;
-
-            const string rsaOid = "1.2.840.113549.1.1.1";
-            const string ecdsaOid = "1.2.840.10045.2.1";
-            string keyAlgorithm = certificate.GetKeyAlgorithm();
-
-            if (rsaPkcs1Bytes != null || keyAlgorithm == rsaOid)
-            {
-                using var rsa = System.Security.Cryptography.RSA.Create();
-                if (pkcs8Bytes != null)
-                    rsa.ImportPkcs8PrivateKey(pkcs8Bytes, out _);
-                else if (rsaPkcs1Bytes != null)
-                    rsa.ImportRSAPrivateKey(rsaPkcs1Bytes, out _);
-                else if (encryptedPkcs8Bytes != null && !string.IsNullOrEmpty(password))
-                    rsa.ImportEncryptedPkcs8PrivateKey(password, encryptedPkcs8Bytes, out _);
-                else
-                    return null;
-                return certificate.CopyWithPrivateKey(rsa);
-            }
-            else if (ecPrivKeyBytes != null || keyAlgorithm == ecdsaOid)
-            {
-                using var ecdsa = System.Security.Cryptography.ECDsa.Create();
-                if (pkcs8Bytes != null)
-                    ecdsa.ImportPkcs8PrivateKey(pkcs8Bytes, out _);
-                else if (ecPrivKeyBytes != null)
-                    ecdsa.ImportECPrivateKey(ecPrivKeyBytes, out _);
-                else if (encryptedPkcs8Bytes != null && !string.IsNullOrEmpty(password))
-                    ecdsa.ImportEncryptedPkcs8PrivateKey(password, encryptedPkcs8Bytes, out _);
-                else
-                    return null;
-                return certificate.CopyWithPrivateKey(ecdsa);
-            }
-
-            return null;
-        }
-#endif
-    }
-}
