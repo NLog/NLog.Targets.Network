@@ -591,9 +591,8 @@ namespace NLog.Targets
                 if (totalLength < _reusableEncodingBuffer.Length)
                 {
                     payload.CopyTo(0, _reusableEncodingBuffer, 0, totalLength);
-                    var maxByteCount = encoder.GetMaxByteCount(totalLength);
-                    if (output.Capacity < maxByteCount)
-                        output.SetLength(maxByteCount);
+                    var maxByteCount = ((encoder.GetMaxByteCount(totalLength) / 4096) + 1) * 4096;
+                    output.SetLength(maxByteCount);
                     var byteCount = encoder.GetBytes(_reusableEncodingBuffer, 0, totalLength, output.GetBuffer(), 0);
                     output.SetLength(byteCount);
                     output.Position = byteCount;
@@ -602,8 +601,7 @@ namespace NLog.Targets
                 {
                     var payloadString = payload.ToString();
                     var maxByteCount = encoder.GetMaxByteCount(payloadString.Length);
-                    if (output.Capacity < maxByteCount)
-                        output.SetLength(maxByteCount);
+                    output.SetLength(maxByteCount);
                     var byteCount = encoder.GetBytes(payloadString, 0, payloadString.Length, output.GetBuffer(), 0);
                     output.SetLength(byteCount);
                     output.Position = byteCount;
