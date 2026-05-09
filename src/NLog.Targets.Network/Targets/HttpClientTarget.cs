@@ -584,7 +584,6 @@ namespace NLog.Targets
         void EncodePayload(Encoding encoder, StringBuilder payload, MemoryStream output)
         {
             output.Position = 0;
-            output.SetLength(0);
 
             var totalLength = payload.Length;
             lock (_reusableEncodingBuffer)
@@ -592,17 +591,21 @@ namespace NLog.Targets
                 if (totalLength < _reusableEncodingBuffer.Length)
                 {
                     payload.CopyTo(0, _reusableEncodingBuffer, 0, totalLength);
-                    var byteCount = encoder.GetByteCount(_reusableEncodingBuffer, 0, totalLength);
+                    var maxByteCount = encoder.GetMaxByteCount(totalLength);
+                    if (output.Capacity < maxByteCount)
+                        output.SetLength(maxByteCount);
+                    var byteCount = encoder.GetBytes(_reusableEncodingBuffer, 0, totalLength, output.GetBuffer(), 0);
                     output.SetLength(byteCount);
-                    encoder.GetBytes(_reusableEncodingBuffer, 0, totalLength, output.GetBuffer(), 0);
                     output.Position = byteCount;
                 }
                 else
                 {
                     var payloadString = payload.ToString();
-                    var byteCount = encoder.GetByteCount(payloadString);
+                    var maxByteCount = encoder.GetMaxByteCount(payloadString.Length);
+                    if (output.Capacity < maxByteCount)
+                        output.SetLength(maxByteCount);
+                    var byteCount = encoder.GetBytes(payloadString, 0, payloadString.Length, output.GetBuffer(), 0);
                     output.SetLength(byteCount);
-                    encoder.GetBytes(payloadString, 0, payloadString.Length, output.GetBuffer(), 0);
                     output.Position = byteCount;
                 }
             }
