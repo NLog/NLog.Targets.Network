@@ -63,8 +63,8 @@ namespace NLog.Targets
         private readonly StringBuilder _reusableEncodingBuilder = new StringBuilder();
         private MemoryStream _reusableMemoryStream = new MemoryStream(4096);
         private volatile HttpClient? _httpClient;
-        private TimeSpan _httpClientLifeTime = TimeSpan.FromMinutes(5);
-        private DateTime _httpClientCreatedTime = DateTime.MinValue;
+        private readonly int _httpClientLifeTimeTicks = 5 * 60 * 1000;
+        private int _httpClientCreatedTicks = 0;
 #if !NETFRAMEWORK || NET471_OR_GREATER
         private readonly NLog.Internal.SslCertificateCache _sslCertificateCache = new NLog.Internal.SslCertificateCache();
 #endif
@@ -343,7 +343,7 @@ namespace NLog.Targets
         {
             var oldHttpClient = _httpClient;
             _httpClient = null;
-            _httpClientCreatedTime = DateTime.MinValue;
+            _httpClientCreatedTicks = 0;
             oldHttpClient?.Dispose();
             base.CloseTarget();
         }
@@ -615,8 +615,8 @@ namespace NLog.Targets
         {
             var oldHttpClient = _httpClient;
 
-            DateTime utcNow = DateTime.UtcNow;
-            if (utcNow - _httpClientCreatedTime < _httpClientLifeTime && oldHttpClient != null)
+            int nowTickCount = Environment.TickCount;
+            if (!HttpClientLifeTimeExpired(nowTickCount) && oldHttpClient != null)
             {
                 if (url is null || oldHttpClient.BaseAddress.Equals(url))
                     return oldHttpClient;
@@ -626,25 +626,31 @@ namespace NLog.Targets
             lock (_reusableEncodingBuffer)
             {
                 oldHttpClient = _httpClient;
-                if (utcNow - _httpClientCreatedTime < _httpClientLifeTime && oldHttpClient != null && (url is null || oldHttpClient.BaseAddress.Equals(url)))
+                if (!HttpClientLifeTimeExpired(nowTickCount) && oldHttpClient != null && (url is null || oldHttpClient.BaseAddress.Equals(url)))
                     return oldHttpClient;
 
                 _httpClient = null;
                 oldHttpClient?.Dispose();
                 _httpClient = oldHttpClient = CreateNewHttpClient(url);
-                _httpClientCreatedTime = utcNow;
+                _httpClientCreatedTicks = nowTickCount;
             }
 
             return oldHttpClient;
         }
 
+        private bool HttpClientLifeTimeExpired(int nowTickCount)
+        {
+            var deltaTicks = nowTickCount - _httpClientCreatedTicks;
+            return deltaTicks > _httpClientLifeTimeTicks || deltaTicks < -_httpClientLifeTimeTicks;
+        }
+
         private void SignalHttpClientReset()
         {
-            if (_httpClientCreatedTime != DateTime.MinValue)
+            if (_httpClientCreatedTicks != 0)
                 NLog.Common.InternalLogger.Debug("{0}: Signal HttpClient reset after config change", this);
             lock (_reusableEncodingBuffer)
             {
-                _httpClientCreatedTime = DateTime.MinValue;
+                _httpClientCreatedTicks = 0;
             }
         }
 
@@ -653,7 +659,7 @@ namespace NLog.Targets
             var nullEvent = LogEventInfo.CreateNullEvent();
 
             var baseAddress = url?.ToString() ?? Url?.Render(nullEvent);
-            if (_httpClientCreatedTime == DateTime.MinValue)
+            if (_httpClientCreatedTicks == 0)
                 NLog.Common.InternalLogger.Info("{0}: Creating HttpClient for BaseAddress: {1}", this, baseAddress);
             else
                 NLog.Common.InternalLogger.Debug("{0}: Creating HttpClient for BaseAddress: {1}", this, baseAddress);
