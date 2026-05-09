@@ -1,4 +1,4 @@
-﻿//
+//
 // Copyright (c) 2004-2024 Jaroslaw Kowalski <jaak@jkowalski.net>, Kim Christensen, Julian Verdurmen
 //
 // All rights reserved.
@@ -544,7 +544,7 @@ namespace NLog.Targets
             }
 
             var content = new ByteArrayContent(output.GetBuffer(), 0, (int)output.Position);
-            content.Headers.Add("Content-Encoding", "gzip");
+            content.Headers.ContentEncoding.Add("gzip");
             return content;
         }
 
