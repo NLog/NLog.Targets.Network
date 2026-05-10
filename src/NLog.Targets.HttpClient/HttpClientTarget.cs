@@ -31,8 +31,6 @@
 // THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#if !NET35
-
 namespace NLog.Targets
 {
     using System;
@@ -49,13 +47,14 @@ namespace NLog.Targets
     using NLog.Layouts;
 
     /// <summary>
-    /// Sends log messages to HTTP Web-server using either HTTP or HTTPS with support for batching and compression.
+    /// Sends log events to an HTTP or HTTPS endpoint, with support for batching and compression.
     /// </summary>
     /// <remarks>
     /// <a href="https://github.com/NLog/NLog/wiki/HttpClient-target">See NLog Wiki</a>
     /// </remarks>
     /// <seealso href="https://github.com/NLog/NLog/wiki/HttpClient-target">Documentation on NLog Wiki</seealso>
     [Target("HttpClient")]
+    [Target("Http")]
     public class HttpClientTarget : AsyncTaskTarget
     {
         private static readonly Encoding _utf8Encoding = new UTF8Encoding(false);   // No PreAmble BOM
@@ -63,14 +62,14 @@ namespace NLog.Targets
         private readonly StringBuilder _reusableEncodingBuilder = new StringBuilder();
         private MemoryStream _reusableMemoryStream = new MemoryStream(4096);
         private volatile HttpClient? _httpClient;
-        private readonly int _httpClientLifeTimeTicks = 5 * 60 * 1000;
-        private int _httpClientCreatedTicks = 0;
+        private const int _httpClientLifeTimeTicks = 5 * 60 * 1000;
+        private volatile int _httpClientCreatedTicks = 0;
 #if !NETFRAMEWORK || NET471_OR_GREATER
         private readonly NLog.Internal.SslCertificateCache _sslCertificateCache = new NLog.Internal.SslCertificateCache();
 #endif
 
         /// <summary>
-        /// EndPoint URL for the HTTP Web-server to send to
+        /// Gets or sets the EndPoint destination URL for HTTP requests.
         /// </summary>
         public Layout Url
         {
@@ -105,9 +104,9 @@ namespace NLog.Targets
         private System.Net.Http.HttpMethod _httpMethod = System.Net.Http.HttpMethod.Post;
 
         /// <summary>
-        /// Get or sets the content-type header to use for the http-request. Default is "application/json".
+        /// Get or sets the content-type header to use for the http-request.
         /// </summary>
-        /// <remarks>Default: <see langword="application/json"/></remarks>
+        /// <remarks>Default: <c>application/json</c></remarks>
         public string ContentType
         {
             get => _contentType;
@@ -123,7 +122,7 @@ namespace NLog.Targets
         private MediaTypeHeaderValue _contentTypeHeader = new MediaTypeHeaderValue("application/json") { CharSet = _utf8Encoding.WebName };
 
         /// <summary>
-        /// KeepAlive-header to ensure the TCP-connections are kept alive and reused, instead of each HTTP-request pays for connection establishment.
+        /// Gets or sets whether HTTP persistent connections (Keep-Alive) are enabled.
         /// </summary>
         /// <remarks>Default: <see langword="true"/></remarks>
         public bool KeepAlive
@@ -166,7 +165,7 @@ namespace NLog.Targets
         public LineEndingMode LineEnding { get; set; } = LineEndingMode.LF;
 
         /// <summary>
-        /// Gets or sets a value indicating whether batching LogEvents as a JSON array (Overrides <see cref="LineEnding"/>)
+        /// Gets or sets whether batched log events are wrapped in a JSON array. (Overrides <see cref="LineEnding"/>)
         /// </summary>
         /// <remarks>Default: <see langword="false"/> (Remember to assign <see cref="AsyncTaskTarget.BatchSize"/> to enable batching)</remarks>
         public bool BatchAsJsonArray { get; set; }
@@ -188,7 +187,7 @@ namespace NLog.Targets
         private int _sendTimeoutSeconds = 30;
 
         /// <summary>
-        /// Gets or sets the Network credentials to use for HTTP authentication.
+        /// Gets or sets the <see cref="NetworkCredential"/> username used for HTTP authentication.
         /// </summary>
         /// <remarks>Explicit Empty/Blank String means use default network credentials (NTLM Windows Authentication)</remarks>
         public Layout? NetworkUserName
@@ -204,7 +203,7 @@ namespace NLog.Targets
         private Layout? _networkUserName;
 
         /// <summary>
-        /// Gets or sets the Network credentials to use for HTTP authentication.
+        /// Gets or sets the <see cref="NetworkCredential"/> password used for HTTP authentication.
         /// </summary>
         /// <remarks>Empty/Blank String means use default credentials</remarks>
         public Layout? NetworkPassword
@@ -252,16 +251,16 @@ namespace NLog.Targets
 #endif
 
         /// <summary>
-        /// Gets or sets the maximum allowed size, in bytes, before splitting multiple batches when sending log events.
+        /// Gets or sets the maximum payload size (in bytes) before batched log events are split into multiple HTTP payloads.
         /// </summary>
         /// <remarks>Default: <see langword="40960"/> bytes. Remember to assign <see cref="AsyncTaskTarget.BatchSize"/> to enable batching.</remarks>
         public int MaxPayloadSizeBytes { get; set; } = 40 * 1024;
 
         /// <summary>
-        /// Type of compression for protocol payload (None / GZip / GZipFast)
+        /// Gets or sets the compression mode used for HTTP request payloads. (None / GZip / GZipFast)
         /// </summary>
         /// <remarks>Default: <see langword="None"/></remarks>
-        public NetworkTargetCompressionType Compress { get; set; }
+        public HttpCompressionType Compress { get; set; }
 
         /// <summary>
         /// Gets or sets the collection of header properties to be included in the http-request.
@@ -286,7 +285,7 @@ namespace NLog.Targets
         private Layout? _proxyUrl;
 
         /// <summary>
-        /// Gets or sets the layout used for proxy user authentication.
+        /// Gets or sets the username used when authenticating with the proxy server.
         /// </summary>
         public Layout? ProxyUser
         {
@@ -301,7 +300,7 @@ namespace NLog.Targets
         private Layout? _proxyUser;
 
         /// <summary>
-        /// Gets or sets the layout used for proxy password authentication.
+        /// Gets or sets the password used when authenticating with the proxy server.
         /// </summary>
         public Layout? ProxyPassword
         {
@@ -364,7 +363,7 @@ namespace NLog.Targets
             try
             {
                 int lastBatchSize = 0;
-                var httpContent = Compress == NetworkTargetCompressionType.None ? BuildChunk(output, logEvents, 0, out lastBatchSize) : CompressChunk(output, logEvents, 0, out lastBatchSize);
+                var httpContent = Compress == HttpCompressionType.None ? BuildChunk(output, logEvents, 0, out lastBatchSize) : CompressChunk(output, logEvents, 0, out lastBatchSize);
                 {
                     using var _ = await HttpClientSendAsync(null, httpContent, cancellationToken).ConfigureAwait(false);
                 }
@@ -398,7 +397,7 @@ namespace NLog.Targets
             while (batchStartIndex < logEvents.Count)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var httpContent = Compress == NetworkTargetCompressionType.None ? BuildChunk(output, logEvents, batchStartIndex, out lastBatchSize) : CompressChunk(output, logEvents, batchStartIndex, out lastBatchSize);
+                var httpContent = Compress == HttpCompressionType.None ? BuildChunk(output, logEvents, batchStartIndex, out lastBatchSize) : CompressChunk(output, logEvents, batchStartIndex, out lastBatchSize);
                 using var _ = await HttpClientSendAsync(null, httpContent, cancellationToken).ConfigureAwait(false);
                 batchStartIndex += lastBatchSize;
             }
@@ -509,38 +508,37 @@ namespace NLog.Targets
 
         private HttpContent CompressChunk(MemoryStream output, IList<LogEventInfo> logEvents, int startIndex, out int batchSize)
         {
-            var newlineDelimeter = BatchAsJsonArray ? ", " : LineEnding.NewLineCharacters;
+            var newlineDelimiter = BatchAsJsonArray ? ", " : LineEnding.NewLineCharacters;
             var endIndex = logEvents.Count;
             batchSize = endIndex - startIndex;
 
             output.Position = 0;
             output.SetLength(0);
-            var compressionLevel = Compress == NetworkTargetCompressionType.GZipFast ? CompressionLevel.Fastest : CompressionLevel.Optimal;
+            var compressionLevel = Compress == HttpCompressionType.GZipFast ? CompressionLevel.Fastest : CompressionLevel.Optimal;
 
-            using (var gzipStream = new GZipStream(output, compressionLevel, true))
+            using (var gzipStream = new GZipStream(output, compressionLevel, leaveOpen: true))
+            using (var streamWriter = new StreamWriter(gzipStream, _utf8Encoding, 1024, leaveOpen: true))
             {
-                using (var streamWriter = new StreamWriter(gzipStream, _utf8Encoding, 1024, true))
-                {
-                    if (BatchAsJsonArray)
-                        streamWriter.Write('[');
+                if (BatchAsJsonArray)
+                    streamWriter.Write('[');
 
-                    for (int i = startIndex; i < endIndex; ++i)
+                for (int i = startIndex; i < endIndex; ++i)
+                {
+                    if (i > startIndex)
                     {
-                        if (i > startIndex)
+                        if (output.Position >= MaxPayloadSizeBytes)
                         {
-                            if (output.Position >= MaxPayloadSizeBytes)
-                            {
-                                batchSize = i - startIndex;
-                                break;
-                            }
-                            streamWriter.Write(newlineDelimeter);
+                            batchSize = i - startIndex;
+                            break;
                         }
-                        RenderLogEventForChunk(logEvents[i], streamWriter);
+                        streamWriter.Write(newlineDelimiter);
                     }
 
-                    if (BatchAsJsonArray)
-                        streamWriter.Write(']');
+                    RenderLogEventForChunk(logEvents[i], streamWriter);
                 }
+
+                if (BatchAsJsonArray)
+                    streamWriter.Write(']');
             }
 
             var content = new ByteArrayContent(output.GetBuffer(), 0, (int)output.Position);
@@ -581,7 +579,7 @@ namespace NLog.Targets
             }
         }
 
-        void EncodePayload(Encoding encoder, StringBuilder payload, MemoryStream output)
+        private void EncodePayload(Encoding encoder, StringBuilder payload, MemoryStream output)
         {
             output.Position = 0;
 
@@ -792,5 +790,3 @@ namespace NLog.Targets
         }
     }
 }
-
-#endif

@@ -31,9 +31,7 @@
 // THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#if !NET35
-
-namespace NLog.Targets.Network
+namespace NLog.Targets.HttpClient.Tests
 {
     using System;
     using System.Collections.Generic;
@@ -46,6 +44,7 @@ namespace NLog.Targets.Network
     using System.Threading;
     using System.Threading.Tasks;
     using NLog.Config;
+    using NLog.Targets;
     using Xunit;
 
     public class HttpClientTargetTests
@@ -201,7 +200,7 @@ namespace NLog.Targets.Network
                 {
                     Url = $"http://127.0.0.1:{server.Port}/logs",
                     Layout = "${message}",
-                    Compress = NetworkTargetCompressionType.GZip,
+                    Compress = HttpCompressionType.GZip,
                 };
 
                 using (var logFactory = BuildLogFactory(target))
@@ -509,5 +508,3 @@ namespace NLog.Targets.Network
         }
     }
 }
-
-#endif
