@@ -69,6 +69,14 @@ namespace NLog.Targets
 #endif
 
         /// <summary>
+        /// Initializes a new instance of the <see cref="HttpClientTarget"/> class with default settings.
+        /// </summary>
+        public HttpClientTarget()
+        {
+            RetryDelayMilliseconds = 2500;  // Delay before retry when transient failures. Ex Rate-Limited responses (e.g. HTTP 429)
+        }
+
+        /// <summary>
         /// Gets or sets the EndPoint destination URL for HTTP requests.
         /// </summary>
         public Layout Url
@@ -318,20 +326,20 @@ namespace NLog.Targets
         protected override void InitializeTarget()
         {
             if (Url is null || ReferenceEquals(Url, Layout.Empty))
-                throw new NLogConfigurationException($"{nameof(Url)} layout must be specified for {nameof(HttpClientTarget)}");
+                throw new NLogConfigurationException($"{nameof(Url)} layout must be specified for {GetType()}");
 
             string baseUrl = Url?.Render(LogEventInfo.CreateNullEvent()) ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(baseUrl))
             {
                 if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var _))
-                    throw new NLogConfigurationException($"Invalid {nameof(Url)} specified for {nameof(HttpClientTarget)}: {baseUrl}");
+                    throw new NLogConfigurationException($"Invalid {nameof(Url)} specified for {GetType()}: {baseUrl}");
             }
 
             var proxyUrl = ProxyUrl?.Render(LogEventInfo.CreateNullEvent()) ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(proxyUrl))
             {
                 if (!Uri.TryCreate(proxyUrl, UriKind.Absolute, out var _))
-                    throw new NLogConfigurationException($"Invalid {nameof(ProxyUrl)} specified for {nameof(HttpClientTarget)}: {proxyUrl}");
+                    throw new NLogConfigurationException($"Invalid {nameof(ProxyUrl)} specified for {GetType()}: {proxyUrl}");
             }
 
             base.InitializeTarget();
@@ -363,7 +371,7 @@ namespace NLog.Targets
             try
             {
                 int lastBatchSize = 0;
-                var httpContent = Compress == HttpCompressionType.None ? BuildChunk(output, logEvents, 0, out lastBatchSize) : CompressChunk(output, logEvents, 0, out lastBatchSize);
+                var httpContent = Compress == HttpCompressionType.None ? BuildChunk(output, logEvents, 0, out lastBatchSize) : GZipCompressChunk(output, logEvents, 0, out lastBatchSize);
                 {
                     using var _ = await HttpClientSendAsync(null, httpContent, cancellationToken).ConfigureAwait(false);
                 }
@@ -397,7 +405,7 @@ namespace NLog.Targets
             while (batchStartIndex < logEvents.Count)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var httpContent = Compress == HttpCompressionType.None ? BuildChunk(output, logEvents, batchStartIndex, out lastBatchSize) : CompressChunk(output, logEvents, batchStartIndex, out lastBatchSize);
+                var httpContent = Compress == HttpCompressionType.None ? BuildChunk(output, logEvents, batchStartIndex, out lastBatchSize) : GZipCompressChunk(output, logEvents, batchStartIndex, out lastBatchSize);
                 using var _ = await HttpClientSendAsync(null, httpContent, cancellationToken).ConfigureAwait(false);
                 batchStartIndex += lastBatchSize;
             }
@@ -451,7 +459,9 @@ namespace NLog.Targets
             }
             catch (Exception ex)
             {
-                NLog.Common.InternalLogger.Error(ex, "{0}: HTTP request failed", this);
+                NLog.Common.InternalLogger.Error(ex, "{0}: HTTP request failed with status code {1}", this, (int)httpStatusCode);
+                if (httpStatusCode == 0 && HttpClientLifeTimeExpired(Environment.TickCount, 5000))
+                    SignalHttpClientReset();  // Reset HttpClient immediately on transport-level failures (e.g. DNS failure, network failure) to clear the stale HttpClient TCP connection pool.
                 throw;
             }
         }
@@ -506,7 +516,7 @@ namespace NLog.Targets
             }
         }
 
-        private HttpContent CompressChunk(MemoryStream output, IList<LogEventInfo> logEvents, int startIndex, out int batchSize)
+        private HttpContent GZipCompressChunk(MemoryStream output, IList<LogEventInfo> logEvents, int startIndex, out int batchSize)
         {
             var newlineDelimiter = BatchAsJsonArray ? ", " : LineEnding.NewLineCharacters;
             var endIndex = logEvents.Count;
@@ -612,7 +622,7 @@ namespace NLog.Targets
             var oldHttpClient = _httpClient;
 
             int nowTickCount = Environment.TickCount;
-            if (!HttpClientLifeTimeExpired(nowTickCount) && oldHttpClient != null)
+            if (!HttpClientLifeTimeExpired(nowTickCount, _httpClientLifeTimeTicks) && oldHttpClient != null)
             {
                 if (url is null || oldHttpClient.BaseAddress.Equals(url))
                     return oldHttpClient;
@@ -622,7 +632,7 @@ namespace NLog.Targets
             lock (_reusableEncodingBuffer)
             {
                 oldHttpClient = _httpClient;
-                if (!HttpClientLifeTimeExpired(nowTickCount) && oldHttpClient != null && (url is null || oldHttpClient.BaseAddress.Equals(url)))
+                if (!HttpClientLifeTimeExpired(nowTickCount, _httpClientLifeTimeTicks) && oldHttpClient != null && (url is null || oldHttpClient.BaseAddress.Equals(url)))
                     return oldHttpClient;
 
                 _httpClient = null;
@@ -634,10 +644,10 @@ namespace NLog.Targets
             return oldHttpClient;
         }
 
-        private bool HttpClientLifeTimeExpired(int nowTickCount)
+        private bool HttpClientLifeTimeExpired(int nowTickCount, int lifetimeTicks)
         {
             var deltaTicks = nowTickCount - _httpClientCreatedTicks;
-            return deltaTicks > _httpClientLifeTimeTicks || deltaTicks < -_httpClientLifeTimeTicks;
+            return deltaTicks > lifetimeTicks || deltaTicks < -lifetimeTicks;
         }
 
         private void SignalHttpClientReset()
@@ -660,7 +670,7 @@ namespace NLog.Targets
             else
                 NLog.Common.InternalLogger.Debug("{0}: Creating HttpClient for BaseAddress: {1}", this, baseAddress);
             if (!Uri.TryCreate(baseAddress, UriKind.Absolute, out var baseAddressUri))
-                throw new NLogRuntimeException($"Invalid {nameof(Url)} specified for {nameof(HttpClientTarget)}: {baseAddress}");
+                throw new NLogRuntimeException($"Invalid {nameof(Url)} specified for {GetType()}: {baseAddress}");
 
             var handler = new HttpClientHandler();
 
@@ -759,13 +769,13 @@ namespace NLog.Targets
             return newHttpClient;
         }
 
-        private static IWebProxy CreateWebProxy(string proxyAddress, string proxyUser, string proxyPassword)
+        private IWebProxy CreateWebProxy(string proxyAddress, string proxyUser, string proxyPassword)
         {
             if (string.IsNullOrEmpty(proxyAddress))
                 return WebRequest.DefaultWebProxy;
 
             if (!Uri.TryCreate(proxyAddress, UriKind.Absolute, out var proxyUri))
-                throw new NLogRuntimeException($"Invalid {nameof(ProxyUrl)} specified for {nameof(HttpClientTarget)}: {proxyAddress}");
+                throw new NLogRuntimeException($"Invalid {nameof(ProxyUrl)} specified for {GetType()}: {proxyAddress}");
 
             var proxy = new WebProxy(proxyUri);
             if (string.IsNullOrEmpty(proxyUser))

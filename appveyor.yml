@@ -1,15 +1,21 @@
 version: 6.0.0.{build}
-image: Visual Studio 2022
+image: Visual Studio 2026
 configuration: Release
 platform: Any CPU
 skip_tags: true
 skip_branch_with_pr: true
+environment:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_NOLOGO: true
 nuget:
   disable_publish_on_pr: true
 build_script:
 - ps: msbuild /t:restore,pack /p:Configuration=Release /p:IncludeSymbols=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true /p:EmbedUntrackedSources=true /p:PublishRepositoryUrl=true /verbosity:minimal
 test_script:
 - ps: dotnet test tests\NLog.Targets.Network.Tests\NLog.Targets.Network.Tests.csproj
+- ps: dotnet test tests\NLog.Targets.HttpClient.Tests\NLog.Targets.HttpClient.Tests.csproj
+- ps: dotnet test tests\NLog.Targets.OpenTelemetryHttp.Tests\NLog.Targets.OpenTelemetryHttp.Tests.csproj
 artifacts:
   - path: '**\NLog.*.nupkg'
   - path: '**\NLog.*.snupkg'
