@@ -15,7 +15,7 @@
 
     <Title>NLog.Targets.HttpClient</Title>
     <Company>NLog</Company>
-    <Description>NLog HttpClientTarget for sending log messages to HTTP Web-server using either HTTP or HTTPS with support for batching and compression.</Description>
+    <Description>NLog HttpClientTarget for sending log messages to HTTP or HTTPS endpoint, with support for batching and compression.</Description>
     <Product>NLog.Targets.HttpClient v$(ProductVersion)</Product>
     <InformationalVersion>$(ProductVersion)</InformationalVersion>
     <Authors>Jarek Kowalski,Kim Christensen,Julian Verdurmen</Authors>
