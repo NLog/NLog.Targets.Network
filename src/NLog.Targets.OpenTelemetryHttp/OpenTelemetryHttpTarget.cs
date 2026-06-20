@@ -58,7 +58,6 @@ namespace NLog.Targets
     /// <c>OTEL_EXPORTER_OTLP_HEADERS</c>, <c>OTEL_EXPORTER_OTLP_LOGS_HEADERS</c>,
     /// <c>OTEL_EXPORTER_OTLP_COMPRESSION</c>, <c>OTEL_EXPORTER_OTLP_LOGS_COMPRESSION</c>,
     /// <c>OTEL_EXPORTER_OTLP_TIMEOUT</c>, <c>OTEL_EXPORTER_OTLP_LOGS_TIMEOUT</c>,
-    /// <c>OTEL_EXPORTER_OTLP_PROTOCOL</c>, <c>OTEL_EXPORTER_OTLP_LOGS_PROTOCOL</c>,
     /// <c>OTEL_SERVICE_NAME</c>, <c>OTEL_RESOURCE_ATTRIBUTES</c>.
     /// Environment variables are resolved using NLog <c>${environment}</c> layout renderer.
     /// </para>
@@ -154,7 +153,7 @@ namespace NLog.Targets
             try
             {
                 if (Compress != HttpCompressionType.None)
-                    await WriteCompressedAsync(logEvents, chunks, cancellationToken).ConfigureAwait(false);
+                    await WriteGZipCompressedAsync(logEvents, chunks, cancellationToken).ConfigureAwait(false);
                 else
                     await WriteRawAsync(logEvents, chunks, cancellationToken).ConfigureAwait(false);
             }
@@ -173,123 +172,69 @@ namespace NLog.Targets
             var output = RentMemoryStream();
             chunks.Add(output);
 
+            var batch = CreateNewBatch(output, logEvents[0]);
+
             for (int i = 0; i < logEvents.Count; i++)
             {
-                SerializeLogEvent(logEvents[i], output);
+                var logEvent = logEvents[i];
+
+                WriteLogRecord(ref batch, logEvent);
 
                 if (output.Length >= MaxPayloadSizeBytes && i < logEvents.Count - 1)
                 {
+                    batch.Dispose();    //  Complete batch, and flush to output stream
                     var sendTask = HttpClientSendAsync(_logsUrl, BuildHttpContent(output), cancellationToken);
+
                     pendingTasks ??= new List<Task<HttpResponseMessage>>();
                     pendingTasks.Add(sendTask);
+
                     output = RentMemoryStream();
                     chunks.Add(output);
+                    var nextEvent = logEvents[i + 1];
+                    batch = CreateNewBatch(output, nextEvent);
                 }
             }
 
+            batch.Dispose();    //  Complete batch, and flush to output stream
             await SendLastChunkAndAwaitPendingAsync(BuildHttpContent(output), pendingTasks, cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task SendLastChunkAndAwaitPendingAsync(HttpContent lastContent, List<Task<HttpResponseMessage>>? pendingTasks, CancellationToken cancellationToken)
+        private OtlpBatchBuilder CreateNewBatch(MemoryStream stream, LogEventInfo firstEvent)
         {
-            using var lastResponse = await HttpClientSendAsync(_logsUrl, lastContent, cancellationToken).ConfigureAwait(false);
-            if (pendingTasks != null)
-            {
-                if (pendingTasks.Count == 1)
-                {
-                    using var response = await pendingTasks[0].ConfigureAwait(false);
-                }
-                else
-                {
-                    var responses = await Task.WhenAll(pendingTasks).ConfigureAwait(false);
-                    foreach (var response in responses)
-                        response?.Dispose();
-                }
-            }
-        }
+            var batch = _serializer.BeginBatch(stream);
 
-        private static ByteArrayContent BuildHttpContent(MemoryStream output)
-        {
-            return new ByteArrayContent(output.GetBuffer(), 0, (int)output.Length);
-        }
-
-        private async Task WriteCompressedAsync(IList<LogEventInfo> logEvents, List<MemoryStream> chunks, CancellationToken cancellationToken)
-        {
-            List<Task<HttpResponseMessage>>? pendingTasks = null;
-            var compressionLevel = Compress == HttpCompressionType.GZipFast ? CompressionLevel.Fastest : CompressionLevel.Optimal;
-            var eventBuffer = RentMemoryStream();
-            var compressedOutput = RentMemoryStream();
-            chunks.Add(compressedOutput);
-            GZipStream? gzipStream = new GZipStream(compressedOutput, compressionLevel, leaveOpen: true);
-            try
-            {
-                for (int i = 0; i < logEvents.Count; i++)
-                {
-                    eventBuffer.Position = 0;
-                    eventBuffer.SetLength(0);
-                    SerializeLogEvent(logEvents[i], eventBuffer);
-                    gzipStream.Write(eventBuffer.GetBuffer(), 0, (int)eventBuffer.Length);
-
-                    if (compressedOutput.Length >= MaxPayloadSizeBytes && i < logEvents.Count - 1)
-                    {
-                        gzipStream.Dispose();
-                        gzipStream = null;
-                        var sendTask = HttpClientSendAsync(_logsUrl, BuildGzipContent(compressedOutput), cancellationToken);
-                        pendingTasks ??= new List<Task<HttpResponseMessage>>();
-                        pendingTasks.Add(sendTask);
-                        compressedOutput = RentMemoryStream();
-                        chunks.Add(compressedOutput);
-                        gzipStream = new GZipStream(compressedOutput, compressionLevel, leaveOpen: true);
-                    }
-                }
-
-                gzipStream.Dispose();
-                gzipStream = null;
-            }
-            finally
-            {
-                gzipStream?.Dispose();
-                ReturnMemoryStream(eventBuffer);
-            }
-
-            await SendLastChunkAndAwaitPendingAsync(BuildGzipContent(compressedOutput), pendingTasks, cancellationToken).ConfigureAwait(false);
-        }
-
-        private static HttpContent BuildGzipContent(MemoryStream compressedPayload)
-        {
-            var content = new ByteArrayContent(compressedPayload.GetBuffer(), 0, (int)compressedPayload.Length);
-            content.Headers.ContentEncoding.Add("gzip");
-            return content;
-        }
-
-        private void SerializeLogEvent(LogEventInfo logEvent, MemoryStream output)
-        {
-            using var builder = _serializer.BeginRecord(output);
-
-            var serviceName = RenderLogEvent(ServiceName, logEvent);
-            if (serviceName is null || string.IsNullOrWhiteSpace(serviceName))
+            var serviceName = RenderLogEvent(ServiceName, firstEvent);
+            if (string.IsNullOrWhiteSpace(serviceName))
                 serviceName = "Unknown";
-            builder.AddResourceAttribute("service.name", serviceName);
 
-            for (int j = 0; j < ResourceAttributes.Count; j++)
+            batch.AddResourceAttribute("service.name", serviceName);
+
+            for (int j = 0; j < ResourceAttributes.Count; ++j)
             {
                 var attr = ResourceAttributes[j];
-                if (attr.Name is null || string.IsNullOrWhiteSpace(attr.Name))
+                if (string.IsNullOrWhiteSpace(attr.Name))
                     continue;
-                var value = RenderLogEvent(attr.Layout, logEvent);
+
+                var value = RenderLogEvent(attr.Layout, firstEvent);
                 if (!attr.IncludeEmptyValue && string.IsNullOrWhiteSpace(value))
                     continue;
-                builder.AddResourceAttribute(attr.Name, value);
+
+                batch.AddResourceAttribute(attr.Name, value);
             }
 
+            return batch;
+        }
+
+        private void WriteLogRecord(ref OtlpBatchBuilder batch, LogEventInfo logEvent)
+        {
             var properties = GetLogEventProperties(logEvent);
             if (properties is null && (IncludeEventProperties && logEvent.HasProperties))
             {
-                builder.AddScopeLogs(ScopeName, logEvent, RenderLogEvent(Layout, logEvent), logEvent.Properties);
+                batch.AddLogRecord(ScopeName, logEvent, RenderLogEvent(Layout, logEvent), logEvent.Properties);
             }
             else
             {
-                builder.AddScopeLogs(ScopeName, logEvent, RenderLogEvent(Layout, logEvent), properties);
+                batch.AddLogRecord(ScopeName, logEvent, RenderLogEvent(Layout, logEvent), properties);
             }
         }
 
@@ -319,6 +264,97 @@ namespace NLog.Targets
                     continue;
                 yield return new KeyValuePair<string, object?>(prop.Name, value);
             }
+        }
+
+        private async Task SendLastChunkAndAwaitPendingAsync(HttpContent lastContent, List<Task<HttpResponseMessage>>? pendingTasks, CancellationToken cancellationToken)
+        {
+            using var lastResponse = await HttpClientSendAsync(_logsUrl, lastContent, cancellationToken).ConfigureAwait(false);
+            if (pendingTasks != null)
+            {
+                if (pendingTasks.Count == 1)
+                {
+                    using var response = await pendingTasks[0].ConfigureAwait(false);
+                }
+                else
+                {
+                    var responses = await Task.WhenAll(pendingTasks).ConfigureAwait(false);
+                    foreach (var response in responses)
+                        response?.Dispose();
+                }
+            }
+        }
+
+        private static ByteArrayContent BuildHttpContent(MemoryStream output)
+        {
+            return new ByteArrayContent(output.GetBuffer(), 0, (int)output.Length);
+        }
+
+        private async Task WriteGZipCompressedAsync(
+            IList<LogEventInfo> logEvents,
+            List<MemoryStream> chunks,
+            CancellationToken cancellationToken)
+        {
+            List<Task<HttpResponseMessage>>? pendingTasks = null;
+            var batchStream = RentMemoryStream();
+            chunks.Add(batchStream);
+
+            try
+            {
+                var batch = CreateNewBatch(batchStream, logEvents[0]);
+
+                for (int i = 0; i < logEvents.Count; i++)
+                {
+                    WriteLogRecord(ref batch, logEvents[i]);
+
+                    if (batchStream.Length >= MaxPayloadSizeBytes && i < logEvents.Count - 1)
+                    {
+                        batch.Dispose();
+
+                        var compressedStream = WriteGZipCompressed(batchStream);
+                        chunks.Add(compressedStream);
+                        pendingTasks ??= new List<Task<HttpResponseMessage>>();
+                        pendingTasks.Add(HttpClientSendAsync(_logsUrl, BuildGzipContent(compressedStream), cancellationToken));
+
+                        batchStream = RentMemoryStream();
+                        chunks.Add(batchStream);
+                        var nextBatch = logEvents[i + 1];
+                        batch = CreateNewBatch(batchStream, nextBatch);
+                    }
+                }
+
+                batch.Dispose();
+
+                var finalCompressed = WriteGZipCompressed(batchStream);
+                chunks.Add(finalCompressed);
+
+                await SendLastChunkAndAwaitPendingAsync(
+                    BuildGzipContent(finalCompressed),
+                    pendingTasks,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                ReturnMemoryStream(batchStream);
+            }
+        }
+
+        private MemoryStream WriteGZipCompressed(MemoryStream uncompressed)
+        {
+            var compressedOutput = RentMemoryStream();
+            var compressionLevel = Compress == HttpCompressionType.GZipFast ? CompressionLevel.Fastest : CompressionLevel.Optimal;
+            using (var gzip = new GZipStream(compressedOutput, compressionLevel, leaveOpen: true))
+            {
+                gzip.Write(uncompressed.GetBuffer(), 0, (int)uncompressed.Length);
+            }
+            compressedOutput.Position = 0;
+            return compressedOutput;
+        }
+
+        private static HttpContent BuildGzipContent(MemoryStream compressedPayload)
+        {
+            var content = new ByteArrayContent(compressedPayload.GetBuffer(), 0, (int)compressedPayload.Length);
+            content.Headers.ContentEncoding.Add("gzip");
+            return content;
         }
 
         private MemoryStream RentMemoryStream()
@@ -404,7 +440,7 @@ namespace NLog.Targets
                 if (string.IsNullOrWhiteSpace(timeoutStr))
                     timeoutStr = GetEnvironmentValueFromLayout("OTEL_EXPORTER_OTLP_TIMEOUT");
                 if (!string.IsNullOrWhiteSpace(timeoutStr) && int.TryParse(timeoutStr!.Trim(), out var timeoutMs) && timeoutMs > 0)
-                    SendTimeoutSeconds = Math.Max(1, timeoutMs / 1000);
+                    SendTimeoutSeconds = (int)Math.Ceiling(timeoutMs / 1000.0);
             }
 
             // Resource Attributes: OTEL_RESOURCE_ATTRIBUTES (format: key1=value1,key2=value2)

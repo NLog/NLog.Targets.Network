@@ -70,6 +70,11 @@ namespace NLog.Internal
             return new OtlpLogRecordBuilder(this, output);
         }
 
+        public OtlpBatchBuilder BeginBatch(MemoryStream output)
+        {
+            return new OtlpBatchBuilder(this, output);
+        }
+
         /// <summary>
         /// Builds a ScopeLogs protobuf message containing the instrumentation scope and a single log record.
         /// </summary>
@@ -95,7 +100,7 @@ namespace NLog.Internal
         /// <summary>
         /// Builds a LogRecord protobuf message for a single log event.
         /// </summary>
-        private void BuildLogRecord<T>(MemoryStream stream, LogEventInfo logEvent, string logMessage, IEnumerable<KeyValuePair<T, object?>>? logProperties)
+        internal void BuildLogRecord<T>(MemoryStream stream, LogEventInfo logEvent, string logMessage, IEnumerable<KeyValuePair<T, object?>>? logProperties)
         {
             // LogRecord proto field numbers:
             //   fixed64 time_unix_nano = 1
@@ -457,7 +462,7 @@ namespace NLog.Internal
             }
         }
 
-        private static void WriteKeyStringValue(MemoryStream parent, int fieldNumber, string key, string value)
+        internal static void WriteKeyStringValue(MemoryStream parent, int fieldNumber, string key, string value)
         {
             // KeyValue { string key = 1; AnyValue value = 2 }
             var keyMaxBytes = Encoding.UTF8.GetMaxByteCount(key.Length);
@@ -490,7 +495,7 @@ namespace NLog.Internal
             }
         }
 
-        private static void WriteVarint(MemoryStream stream, ulong value)
+        internal static void WriteVarint(MemoryStream stream, ulong value)
         {
             while (value > 0x7F)
             {
@@ -500,7 +505,7 @@ namespace NLog.Internal
             stream.WriteByte((byte)value);
         }
 
-        private static void WriteTag(MemoryStream stream, int fieldNumber, int wireType)
+        internal static void WriteTag(MemoryStream stream, int fieldNumber, int wireType)
         {
             WriteVarint(stream, (ulong)((fieldNumber << 3) | wireType));
         }
@@ -528,7 +533,7 @@ namespace NLog.Internal
 #endif
         }
 
-        private static void WriteStringField(MemoryStream stream, int fieldNumber, string value)
+        internal static void WriteStringField(MemoryStream stream, int fieldNumber, string value)
         {
             WriteStringField(stream, fieldNumber, value, Encoding.UTF8.GetMaxByteCount(value.Length));
         }
@@ -619,12 +624,12 @@ namespace NLog.Internal
         }
 #endif
 
-        private static SubmessageWriter BeginSubmessageField(MemoryStream stream, int fieldNumber, int maxByteCount = int.MaxValue)
+        internal static SubmessageWriter BeginSubmessageField(MemoryStream stream, int fieldNumber, int maxByteCount = int.MaxValue)
         {
             return new SubmessageWriter(stream, fieldNumber, maxByteCount);
         }
 
-        private readonly struct SubmessageWriter : IDisposable
+        internal readonly struct SubmessageWriter : IDisposable
         {
             // Protobuf allows non-minimal (padded) varints — decoders must accept them.
             // fixedLength=false reserves 2 bytes (up to 16,383 bytes content) for small leaf nodes.

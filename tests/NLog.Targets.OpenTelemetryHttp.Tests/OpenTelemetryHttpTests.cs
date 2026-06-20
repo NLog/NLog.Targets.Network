@@ -38,6 +38,7 @@ namespace NLog.Targets.HttpOTLP.Tests
     using System.Diagnostics;
     using System.IO;
     using System.IO.Compression;
+    using System.Linq;
     using System.Net;
     using System.Net.Sockets;
     using System.Text;
@@ -234,15 +235,7 @@ namespace NLog.Targets.HttpOTLP.Tests
                 var attributes = logRecord.FindAll(f => f.FieldNumber == 6);
 
                 // Parse each KeyValue to extract key name and AnyValue wire type
-                var typedAttributes = new Dictionary<string, ProtobufField>();
-                for (int i = 0; i < attributes.Count; i++)
-                {
-                    var kvFields = ReadProtobufFields(attributes[i].Data);
-                    var keyField = kvFields.Find(f => f.FieldNumber == 1);
-                    var valueField = kvFields.Find(f => f.FieldNumber == 2);
-                    var keyName = Encoding.UTF8.GetString(keyField.Data);
-                    typedAttributes[keyName] = valueField;
-                }
+                var typedAttributes = ParseKeyValueList(attributes);
 
                 // BoolProp: AnyValue field 2 (bool_value), varint wire type 0
                 var boolAnyValue = ReadProtobufFields(typedAttributes["BoolProp"].Data);
@@ -271,6 +264,22 @@ namespace NLog.Targets.HttpOTLP.Tests
                 Assert.Equal(2, enumAnyValue[0].WireType);    // length-delimited
                 Assert.Equal("Resume", Encoding.UTF8.GetString(enumAnyValue[0].Data));
             }
+        }
+
+        private static Dictionary<string, ProtobufField> ParseKeyValueList(List<ProtobufField> attributes)
+        {
+            var result = new Dictionary<string, ProtobufField>();
+
+            foreach (var attr in attributes)
+            {
+                var kvFields = ReadProtobufFields(attr.Data);
+                var keyField = kvFields.Find(f => f.FieldNumber == 1);
+                var valueField = kvFields.Find(f => f.FieldNumber == 2);
+                var keyName = Encoding.UTF8.GetString(keyField.Data);
+                result.Add(keyName, valueField);
+            }
+
+            return result;
         }
 
         [Fact]
@@ -308,15 +317,7 @@ namespace NLog.Targets.HttpOTLP.Tests
 
                 // Collect all attribute fields
                 var attributes = logRecord.FindAll(f => f.FieldNumber == 6);
-                var typedAttributes = new Dictionary<string, ProtobufField>();
-                for (int i = 0; i < attributes.Count; i++)
-                {
-                    var kvFields = ReadProtobufFields(attributes[i].Data);
-                    var keyField = kvFields.Find(f => f.FieldNumber == 1);
-                    var valueField = kvFields.Find(f => f.FieldNumber == 2);
-                    var keyName = Encoding.UTF8.GetString(keyField.Data);
-                    typedAttributes[keyName] = valueField;
-                }
+                var typedAttributes = ParseKeyValueList(attributes);
 
                 // All special doubles should be encoded as double_value (field 4, fixed64 wire type 1)
                 var nanAnyValue = ReadProtobufFields(typedAttributes["NaNProp"].Data);
@@ -402,13 +403,7 @@ namespace NLog.Targets.HttpOTLP.Tests
                 Assert.Equal(2, kvListEntries.Count);
 
                 // Parse nested entries
-                var nestedEntries = new Dictionary<string, ProtobufField>();
-                for (int i = 0; i < kvListEntries.Count; i++)
-                {
-                    var entryFields = ReadProtobufFields(kvListEntries[i].Data);
-                    var entryKey = Encoding.UTF8.GetString(entryFields.Find(f => f.FieldNumber == 1).Data);
-                    nestedEntries[entryKey] = entryFields.Find(f => f.FieldNumber == 2);
-                }
+                var nestedEntries = ParseKeyValueList(kvListEntries);
 
                 // nestedKey should be string_value (AnyValue field 1)
                 var nestedKeyAnyValue = ReadProtobufFields(nestedEntries["nestedKey"].Data);
@@ -777,6 +772,70 @@ namespace NLog.Targets.HttpOTLP.Tests
                 // No trace_id (field 9) or span_id (field 10) should be present
                 Assert.DoesNotContain(logRecord, f => f.FieldNumber == 9);
                 Assert.DoesNotContain(logRecord, f => f.FieldNumber == 10);
+            }
+        }
+
+        [Fact]
+        public void MultipleLogEvents_ShareSameServiceName()
+        {
+            using (var server = new SimpleHttpServer())
+            {
+                var target = new OpenTelemetryHttpTarget
+                {
+                    Url = $"http://127.0.0.1:{server.Port}/v1/logs",
+                    Layout = "${message}",
+                    ServiceName = "TestService"
+                };
+
+                using (var logFactory = BuildLogFactory(target))
+                {
+                    var logger = logFactory.GetLogger("TestLogger");
+
+                    logger.Info("event-1");
+                    logger.Info("event-2");
+                    logger.Info("event-3");
+
+                    logFactory.Flush();
+                }
+
+                var requests = server.WaitForRequests(1);
+                Assert.Single(requests);
+
+                // Decode ExportLogsServiceRequest
+                var topFields = ReadProtobufFields(requests[0].BodyBytes);
+
+                // ResourceLogs (field 1)
+                var resourceLogs = ReadProtobufFields(
+                    topFields.Find(f => f.FieldNumber == 1).Data);
+
+                // Resource (field 1 inside ResourceLogs)
+                var resourceFields = ReadProtobufFields(
+                    resourceLogs.Find(f => f.FieldNumber == 1).Data);
+
+                // Parse KeyValue list into dictionary
+                var attributes = ParseKeyValueList(resourceFields);
+
+                // Get value container
+                var valueField = attributes["service.name"];
+
+                // Decode inner StringValue message
+                var valueFields = ReadProtobufFields(valueField.Data);
+
+                // StringValue is field 1
+                var stringValueField = valueFields.Find(f => f.FieldNumber == 1);
+
+                var serviceName = Encoding.UTF8.GetString(stringValueField.Data);
+                Assert.Equal("TestService", serviceName);
+
+                // Verify multiple log records exist in batch
+                var scopeLogs = ReadProtobufFields(
+                    resourceLogs.Find(f => f.FieldNumber == 2).Data);
+
+                var logRecords = scopeLogs
+                    .Where(f => f.FieldNumber == 2)
+                    .ToList();
+
+                Assert.True(logRecords.Count >= 3);
             }
         }
 
