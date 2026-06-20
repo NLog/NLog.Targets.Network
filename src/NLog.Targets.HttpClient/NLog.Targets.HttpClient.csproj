@@ -1,21 +1,22 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">18.0</VisualStudioVersion>
-    <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' AND '$(VisualStudioVersion)' &lt; '17.0' ">net35;net46;net471;netstandard2.0</TargetFrameworks>
-    <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' ">net35;net46;net471;netstandard2.0;netstandard2.1</TargetFrameworks>
+    <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' AND '$(VisualStudioVersion)' &lt; '17.0' ">net471;netstandard2.0</TargetFrameworks>
+    <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' ">net471;netstandard2.0;netstandard2.1</TargetFrameworks>
 
-    <VersionPrefix>6.0.4</VersionPrefix>
+    <VersionPrefix>6.0.5</VersionPrefix>
+    <VersionSuffix>Preview1</VersionSuffix>
     <AssemblyVersion>6.0.0.0</AssemblyVersion>
     <!-- Strong AssemblyVersion must be fixed on 6.0.0.0 -->
     <AppVeyorBuildNumber>$(APPVEYOR_BUILD_NUMBER)</AppVeyorBuildNumber>
     <AppVeyorBuildNumber Condition="'$(AppVeyorBuildNumber)' == ''">0</AppVeyorBuildNumber>
     <FileVersion>$(VersionPrefix).$(AppVeyorBuildNumber)</FileVersion>
 
-    <Title>NLog.Targets.Network</Title>
+    <Title>NLog.Targets.HttpClient</Title>
     <Company>NLog</Company>
-    <Description>NetworkTarget for sending messages using TCP / UDP sockets with support for SSL / TSL (Log4JXml / GELF / Syslog / Splunk)</Description>
-    <Product>NLog.Targets.Network v$(ProductVersion)</Product>
+    <Description>NLog HttpClientTarget for sending log messages to HTTP Web-server using either HTTP or HTTPS with support for batching and compression.</Description>
+    <Product>NLog.Targets.HttpClient v$(ProductVersion)</Product>
     <InformationalVersion>$(ProductVersion)</InformationalVersion>
     <Authors>Jarek Kowalski,Kim Christensen,Julian Verdurmen</Authors>
     <CurrentYear>$([System.DateTime]::Now.ToString(yyyy))</CurrentYear>
@@ -24,12 +25,10 @@
     <PackageReleaseNotes>
 Changelog:
 
-- First release after extracting to own git repository.
-- SyslogLayout - Rfc5424 specs says escape is not needed for square-bracket and equal-sign.
-- Handle that IPv6 DualMode is not supported on all platforms.
+- Preview1 Release of HttpClientTarget.
     </PackageReleaseNotes>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageTags>NLog;TCPIP;TCP;UDP;Network;logging;log;GELF;Syslog;Splunk;Log4JXml</PackageTags>
+    <PackageTags>NLog;HTTP;HTTPS;HttpClient;logging;log</PackageTags>
     <PackageIcon>N.png</PackageIcon>
     <PackageProjectUrl>https://github.com/NLog/NLog.Targets.Network</PackageProjectUrl>
     <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
@@ -51,31 +50,26 @@ Changelog:
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(TargetFramework)' == 'netstandard2.1' ">
-    <Title>NLog.Targets.Network for .NET Standard 2.1</Title>
+    <Title>NLog.Targets.HttpClient for .NET Standard 2.1</Title>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' ">
-    <Title>NLog.Targets.Network for .NET Standard 2.0</Title>
-  </PropertyGroup>
-
-  <PropertyGroup Condition=" '$(TargetFramework)' == 'net35' ">
-    <Title>NLog.Targets.Network for .NET Framework 3.5</Title>
-  </PropertyGroup>
-
-  <PropertyGroup Condition=" '$(TargetFramework)' == 'net46' ">
-    <Title>NLog.Targets.Network for .NET Framework 4.6</Title>
-    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+    <Title>NLog.Targets.HttpClient for .NET Standard 2.0</Title>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(TargetFramework)' == 'net471' ">
-    <Title>NLog.Targets.Network for .NET Framework 4.7.1</Title>
+    <Title>NLog.Targets.HttpClient for .NET Framework 4.7.1</Title>
     <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
   </PropertyGroup>
 
-  <ItemGroup Condition=" '$(TargetFrameworkIdentifier)' == '.NETFramework' AND '$(TargetFramework)' != 'net35' ">
+  <ItemGroup Condition=" '$(TargetFrameworkIdentifier)' == '.NETFramework' ">
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Net.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\NLog.Targets.Network\Internal\SslCertificateCache.cs" Link="Internal\SslCertificateCache.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -88,7 +82,7 @@ Changelog:
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="../../README.md" Pack="true" PackagePath="" />
+    <None Include="README.md" Pack="true" PackagePath="" />
     <None Include="N.png" Pack="true" PackagePath="" visible="false" />
   </ItemGroup>
   <Target Name="DownloadMissingContent" BeforeTargets="GenerateNuspec">

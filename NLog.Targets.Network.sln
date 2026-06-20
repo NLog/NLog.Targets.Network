@@ -1,17 +1,28 @@
-﻿
-Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.36414.22 d17.14
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.5.11723.231
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NLog.Targets.Network", "src\NLog.Targets.Network\NLog.Targets.Network.csproj", "{99EEF3AA-C3E7-C176-CDA5-ED7F3C4125D8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NLog.Targets.HttpClient", "src\NLog.Targets.HttpClient\NLog.Targets.HttpClient.csproj", "{C1D5F2A3-7E4B-4C8D-9F6E-3B2A1D0E5C7F}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NLog.Targets.Network.Tests", "tests\NLog.Targets.Network.Tests\NLog.Targets.Network.Tests.csproj", "{A1863F0C-6306-30C4-5DD5-70FA0B102107}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NLog.Targets.HttpClient.Tests", "tests\NLog.Targets.HttpClient.Tests\NLog.Targets.HttpClient.Tests.csproj", "{D2E4A1B3-8F5C-4D9E-A7B2-1C3E0F4D6A8B}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
 	ProjectSection(SolutionItems) = preProject
 		appveyor.yml = appveyor.yml
 		README.md = README.md
 	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NLog.Targets.OpenTelemetryHttp", "src\NLog.Targets.OpenTelemetryHttp\NLog.Targets.OpenTelemetryHttp.csproj", "{6C5EB13D-8029-04AD-0415-C75DB4FBE959}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NLog.Targets.OpenTelemetryHttp.Tests", "tests\NLog.Targets.OpenTelemetryHttp.Tests\NLog.Targets.OpenTelemetryHttp.Tests.csproj", "{1D918000-3071-BB27-FD3B-2342B4B6E1FB}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -23,15 +34,39 @@ Global
 		{99EEF3AA-C3E7-C176-CDA5-ED7F3C4125D8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{99EEF3AA-C3E7-C176-CDA5-ED7F3C4125D8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{99EEF3AA-C3E7-C176-CDA5-ED7F3C4125D8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C1D5F2A3-7E4B-4C8D-9F6E-3B2A1D0E5C7F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C1D5F2A3-7E4B-4C8D-9F6E-3B2A1D0E5C7F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C1D5F2A3-7E4B-4C8D-9F6E-3B2A1D0E5C7F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C1D5F2A3-7E4B-4C8D-9F6E-3B2A1D0E5C7F}.Release|Any CPU.Build.0 = Release|Any CPU
 		{A1863F0C-6306-30C4-5DD5-70FA0B102107}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{A1863F0C-6306-30C4-5DD5-70FA0B102107}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A1863F0C-6306-30C4-5DD5-70FA0B102107}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A1863F0C-6306-30C4-5DD5-70FA0B102107}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D2E4A1B3-8F5C-4D9E-A7B2-1C3E0F4D6A8B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D2E4A1B3-8F5C-4D9E-A7B2-1C3E0F4D6A8B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D2E4A1B3-8F5C-4D9E-A7B2-1C3E0F4D6A8B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D2E4A1B3-8F5C-4D9E-A7B2-1C3E0F4D6A8B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6C5EB13D-8029-04AD-0415-C75DB4FBE959}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6C5EB13D-8029-04AD-0415-C75DB4FBE959}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6C5EB13D-8029-04AD-0415-C75DB4FBE959}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6C5EB13D-8029-04AD-0415-C75DB4FBE959}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1D918000-3071-BB27-FD3B-2342B4B6E1FB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1D918000-3071-BB27-FD3B-2342B4B6E1FB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1D918000-3071-BB27-FD3B-2342B4B6E1FB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1D918000-3071-BB27-FD3B-2342B4B6E1FB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{99EEF3AA-C3E7-C176-CDA5-ED7F3C4125D8} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{C1D5F2A3-7E4B-4C8D-9F6E-3B2A1D0E5C7F} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{A1863F0C-6306-30C4-5DD5-70FA0B102107} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{D2E4A1B3-8F5C-4D9E-A7B2-1C3E0F4D6A8B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{6C5EB13D-8029-04AD-0415-C75DB4FBE959} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{1D918000-3071-BB27-FD3B-2342B4B6E1FB} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {A8C623A8-9FF0-46A3-8098-E88489136CA2}
+		SolutionGuid = {70CA2AC6-E9C1-47B7-9A93-598B06A187B5}
 	EndGlobalSection
 EndGlobal
