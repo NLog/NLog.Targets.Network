@@ -63,7 +63,7 @@ LogManager.Setup().SetupExtensions(ext => {
 | `lineEnding`             | `LF`                | Line separator used when batching log events.                                     |
 | `batchAsJsonArray`       | `false`             | Wraps batched log events in a JSON array. Disables `lineEnding` value             |
 | `sendTimeoutSeconds`     | `30`                | HTTP request timeout in seconds.                                                  |
-| `networkUserName`        |                     | Username for HTTP authentication. Empty value uses default system credentials.    |
+| `networkUserName`        |                     | Username for HTTP authentication. `networkUserName = ""` means default NTLM credentials. |
 | `networkPassword`        |                     | Password for HTTP authentication.                                                 |
 | `sslCertificateFile`     |                     | Client certificate file used for mutual TLS authentication.                       |
 | `sslCertificatePassword` |                     | Password for the client certificate.                                              |
