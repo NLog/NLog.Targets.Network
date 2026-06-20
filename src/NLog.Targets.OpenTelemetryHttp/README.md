@@ -18,7 +18,7 @@ NLog will only recognize the type-alias `OpenTelemetry` when loading from an `NL
 
 ```xml
 <extensions>
-    <add assembly="NLog.Targets.HttpOpenTelemetry"/>
+    <add assembly="NLog.Targets.OpenTelemetryHttp"/>
 </extensions>
 ```
 
