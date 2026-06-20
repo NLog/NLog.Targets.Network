@@ -589,7 +589,7 @@ namespace NLog.Targets.HttpOTLP.Tests
         }
 
         [Fact]
-        public void AnyValue_Dictionary_EncodedAsKvListValueField6()
+        public void AnyValue_Dictionary_EncodedAsDictionaryValueField6()
         {
             var dict = new Dictionary<string, object>
             {
@@ -625,6 +625,51 @@ namespace NLog.Targets.HttpOTLP.Tests
             var key2AnyValue = ReadProtobufFields(parsed["key2"].Data);
             Assert.Equal(3, key2AnyValue[0].FieldNumber);
             Assert.Equal(42UL, ReadVarintFromBytes(key2AnyValue[0].Data));
+        }
+
+        [Fact]
+        public void AnyValue_Dictionary_Nested_EncodedAsDictionaryValueField6()
+        {
+            var dict = new Dictionary<string, object>
+            {
+                ["key1"] = "value1",
+                ["key2"] = new List<object> { "alpha", 99, new List<object> { "nested" } },
+            };
+
+            var output = SerializeWithProperty("map", dict);
+            var anyValueWrapper = GetPropertyAnyValueWrapper(output, "map");
+
+            // AnyValue { KeyValueList kvlist_value = 6 } → field 6, wire type 2
+            var wrapperFields = ReadProtobufFields(anyValueWrapper.Data);
+            var kvListField = wrapperFields.Find(f => f.FieldNumber == 6);
+            Assert.Equal(2, kvListField.WireType);
+
+            // KeyValueList { repeated KeyValue values = 1 }
+            var kvEntries = ReadProtobufFields(kvListField.Data);
+            Assert.Equal(2, kvEntries.Count);
+
+            var parsed = new Dictionary<string, ProtobufField>();
+            foreach (var entry in kvEntries)
+            {
+                var entryFields = ReadProtobufFields(entry.Data);
+                var key = Encoding.UTF8.GetString(entryFields.Find(f => f.FieldNumber == 1).Data);
+                parsed[key] = entryFields.Find(f => f.FieldNumber == 2);
+            }
+
+            // key1 → string_value
+            var key1AnyValue = ReadProtobufFields(parsed["key1"].Data);
+            Assert.Equal(1, key1AnyValue[0].FieldNumber);
+            Assert.Equal("value1", Encoding.UTF8.GetString(key1AnyValue[0].Data));
+
+            // key2 → ArrayValue { ArrayValue array_value = 5 } → field 5, wire type 2
+            var key2AnyValue = ReadProtobufFields(parsed["key2"].Data);
+            var arrayField = key2AnyValue.Find(f => f.FieldNumber == 5);
+            Assert.Equal(2, arrayField.WireType);
+
+            // ArrayValue { repeated AnyValue values = 1 }
+            var arrayEntries = ReadProtobufFields(arrayField.Data);
+            Assert.Equal(3, arrayEntries.Count);
+            Assert.All(arrayEntries, e => Assert.Equal(1, e.FieldNumber));
         }
 
         [Fact]
@@ -741,10 +786,10 @@ namespace NLog.Targets.HttpOTLP.Tests
             return ParseKeyValueFields(attributeFields);
         }
 
-        private static Dictionary<string, ProtobufField> ParseKeyValueFields(List<ProtobufField> kvFields)
+        private static Dictionary<string, ProtobufField> ParseKeyValueFields(List<ProtobufField> keyValueFields)
         {
             var result = new Dictionary<string, ProtobufField>();
-            foreach (var kv in kvFields)
+            foreach (var kv in keyValueFields)
             {
                 var fields = ReadProtobufFields(kv.Data);
                 var keyField = fields.Find(f => f.FieldNumber == 1);

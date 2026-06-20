@@ -52,6 +52,9 @@ namespace NLog.Internal
     internal sealed class OtlpProtobufSerializer
     {
         private static readonly long UnixEpochTicks = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks;
+        private const int MaxStringLength = 64 * 1024;
+        private const int MaxCollectionItems = 10000;
+        private const int MaxRecursionDepth = 2;
 
         /// <summary>Gets or sets the layout for capturing the W3C TraceId for each LogRecord (Hexadecimal String: 32 chars).</summary>
         public Layout<System.Diagnostics.ActivityTraceId?>? TraceId { get; set; }
@@ -267,7 +270,7 @@ namespace NLog.Internal
         }
 #endif
 
-        internal static void BuildAnyValue(MemoryStream stream, int fieldNumber, object? value)
+        internal static void BuildAnyValue(MemoryStream stream, int fieldNumber, object? value, int recursionDepth = 0)
         {
             // AnyValue { string string_value = 1; bool bool_value = 2; int64 int_value = 3; double double_value = 4; ArrayValue array_value = 5; KeyValueList kvlist_value = 6 }
             if (value is Enum)
@@ -356,29 +359,29 @@ namespace NLog.Internal
                 return;
             }
 
-            if (value is IList list)
+            if (value is IList list && recursionDepth < MaxRecursionDepth)
             {
                 using (BeginSubmessageField(stream, fieldNumber))
                 {
-                    BuildAnyValueArray(stream, list);
+                    BuildAnyValueArray(stream, list, recursionDepth + 1);
                 }
                 return;
             }
 
-            if (value is IDictionary dict)
+            if (value is IDictionary dict && recursionDepth < MaxRecursionDepth)
             {
                 using (BeginSubmessageField(stream, fieldNumber))
                 {
-                    BuildAnyValueKvList(stream, dict);
+                    BuildAnyValueDictionary(stream, dict, recursionDepth + 1);
                 }
                 return;
             }
 
-            if (value is IEnumerable enumerable)
+            if (value is IEnumerable enumerable && recursionDepth < MaxRecursionDepth)
             {
                 using (BeginSubmessageField(stream, fieldNumber))
                 {
-                    BuildAnyValueArray(stream, enumerable);
+                    BuildAnyValueArray(stream, enumerable, recursionDepth + 1);
                 }
                 return;
             }
@@ -386,10 +389,11 @@ namespace NLog.Internal
             BuildAnyValueString(stream, fieldNumber, value?.ToString() ?? string.Empty);
         }
 
-        private static void BuildAnyValueKvList(MemoryStream stream, IDictionary dict)
+        private static void BuildAnyValueDictionary(MemoryStream stream, IDictionary dict, int recursionDepth = 0)
         {
             // AnyValue { KeyValueList kvlist_value = 6 }
             // KeyValueList { repeated KeyValue values = 1 }
+            int collectionCount = 0;
             using (BeginSubmessageField(stream, 6))
             {
                 var enumerator = dict.GetEnumerator();
@@ -401,7 +405,10 @@ namespace NLog.Internal
                         if (key is null || string.IsNullOrEmpty(key))
                             continue;
 
-                        WriteKeyValue(stream, 1, key, enumerator.Value);
+                        if (++collectionCount > MaxCollectionItems)
+                            break;
+
+                        WriteKeyValue(stream, 1, key, enumerator.Value, recursionDepth);
                     }
                 }
                 finally
@@ -411,23 +418,25 @@ namespace NLog.Internal
             }
         }
 
-        private static void BuildAnyValueArray(MemoryStream stream, IList list)
+        private static void BuildAnyValueArray(MemoryStream stream, IList list, int recursionDepth = 0)
         {
             // AnyValue { ArrayValue array_value = 5 }
             // ArrayValue { repeated AnyValue values = 1 }
+            int listCount = list.Count < MaxCollectionItems ? list.Count : MaxCollectionItems;
             using (BeginSubmessageField(stream, 5))
             {
-                for (int i = 0; i < list.Count; i++)
+                for (int i = 0; i < listCount; i++)
                 {
-                    BuildAnyValue(stream, 1, list[i]);
+                    BuildAnyValue(stream, 1, list[i], recursionDepth);
                 }
             }
         }
 
-        private static void BuildAnyValueArray(MemoryStream stream, IEnumerable enumerable)
+        private static void BuildAnyValueArray(MemoryStream stream, IEnumerable enumerable, int recursionDepth = 0)
         {
             // AnyValue { ArrayValue array_value = 5 }
             // ArrayValue { repeated AnyValue values = 1 }
+            int collectionCount = 0;
             using (BeginSubmessageField(stream, 5))
             {
                 var enumerator = enumerable.GetEnumerator();
@@ -435,7 +444,10 @@ namespace NLog.Internal
                 {
                     while (enumerator.MoveNext())
                     {
-                        BuildAnyValue(stream, 1, enumerator.Current);
+                        if (++collectionCount > MaxCollectionItems)
+                            break;
+
+                        BuildAnyValue(stream, 1, enumerator.Current, recursionDepth);
                     }
                 }
                 finally
@@ -458,7 +470,7 @@ namespace NLog.Internal
             }
         }
 
-        private static void WriteKeyValue(MemoryStream parent, int fieldNumber, string key, object? value)
+        private static void WriteKeyValue(MemoryStream parent, int fieldNumber, string key, object? value, int recursionDepth = 0)
         {
             if (value is string stringValue)
             {
@@ -473,7 +485,7 @@ namespace NLog.Internal
                 using (BeginSubmessageField(parent, fieldNumber, maxByteCount))
                 {
                     WriteStringField(parent, 1, key, keyMaxBytes);
-                    BuildAnyValue(parent, 2, value);
+                    BuildAnyValue(parent, 2, value, recursionDepth);
                 }
             }
         }
@@ -526,6 +538,12 @@ namespace NLog.Internal
 #if NET || NETSTANDARD2_1_OR_GREATER
             WriteStringFieldSpan(stream, fieldNumber, value.AsSpan(), maxByteCount);
 #else
+            if (value.Length > MaxStringLength)
+            {
+                value = value.Substring(0, MaxStringLength);
+                maxByteCount = Encoding.UTF8.GetMaxByteCount(value.Length);
+            }
+
             if (maxByteCount >= SubmessageWriter.MaxContentLength)
                 throw new InvalidOperationException($"String field {fieldNumber} is too large ({maxByteCount} bytes exceeds the {SubmessageWriter.MaxContentLength}-byte protobuf limit).");
 
@@ -562,6 +580,12 @@ namespace NLog.Internal
 #if NET || NETSTANDARD2_1_OR_GREATER
         private static void WriteStringFieldSpan(MemoryStream stream, int fieldNumber, ReadOnlySpan<char> value, int maxByteCount)
         {
+            if (value.Length > MaxStringLength)
+            {
+                value = value.Slice(0, MaxStringLength);
+                maxByteCount = Encoding.UTF8.GetMaxByteCount(value.Length);
+            }
+
             if (maxByteCount >= SubmessageWriter.MaxContentLength)
                 throw new InvalidOperationException($"String field {fieldNumber} is too large ({maxByteCount} bytes exceeds the {SubmessageWriter.MaxContentLength}-byte protobuf limit).");
 
