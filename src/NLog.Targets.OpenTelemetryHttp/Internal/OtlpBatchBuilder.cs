@@ -56,45 +56,69 @@ namespace NLog.Internal
         /// <summary>
         /// Resource attributes must be added before first log record.
         /// </summary>
-        public void AddResourceAttribute(string name, string value)
+        public void AddResourcePayload(KeyValuePair<byte[], byte[]> cachedResourcePayload)
         {
             if (_resourceClosed)
-                throw new InvalidOperationException("Cannot add resource attributes after first log record.");
+                throw new InvalidOperationException("Resource payload already initialized.");
 
-            OtlpProtobufSerializer.WriteKeyStringValue(_stream, 1, name, value);
-        }
+            // Key = Resource payload
+            _stream.Write(cachedResourcePayload.Key, 0, cachedResourcePayload.Key.Length);
 
-        /// <summary>
-        /// Ensures ScopeLogs exists (created lazily on first log record).
-        /// </summary>
-        private void EnsureScopeLogs(string scopeName)
-        {
-            if (_scopeLogsWriter != null)
-                return;
-
-            // Close resource section BEFORE entering scope_logs
             _resourceClosed = true;
             _resourceWriter.Dispose();
 
             // ResourceLogs.scope_logs (field 2)
             _scopeLogsWriter = OtlpProtobufSerializer.BeginSubmessageField(_stream, 2);
 
-            // ScopeLogs.scope (field 1)
+            // Value = ScopeLogs payload
+            _stream.Write(cachedResourcePayload.Value, 0, cachedResourcePayload.Value.Length);
+        }
+
+        internal static KeyValuePair<byte[], byte[]> CreateResourcePayload(string scopeName, IEnumerable<KeyValuePair<string, string>> resourceAttributes)
+        {
+            // Resource payload contents
+            using var resourceStream = new MemoryStream();
+
+            foreach (var resourceAttribute in resourceAttributes)
+            {
+                if (string.IsNullOrEmpty(resourceAttribute.Key))
+                    continue;
+
+                OtlpProtobufSerializer.WriteKeyStringValue(
+                    resourceStream,
+                    1,
+                    resourceAttribute.Key,
+                    resourceAttribute.Value ?? string.Empty);
+            }
+
+            // ScopeLogs payload contents
+            using var scopeLogsStream = new MemoryStream();
+
             if (!string.IsNullOrEmpty(scopeName))
             {
-                using (OtlpProtobufSerializer.BeginSubmessageField(_stream, 1))
+                // InstrumentationScope scope = 1
+                using (OtlpProtobufSerializer.BeginSubmessageField(scopeLogsStream, 1))
                 {
-                    OtlpProtobufSerializer.WriteStringField(_stream, 1, scopeName);
+                    // InstrumentationScope.name = 1
+                    OtlpProtobufSerializer.WriteStringField(
+                        scopeLogsStream,
+                        1,
+                        scopeName);
                 }
             }
+
+            return new KeyValuePair<byte[], byte[]>(
+                resourceStream.ToArray(),   // Key = Resource payload
+                scopeLogsStream.ToArray()); // Value = ScopeLogs payload
         }
 
         /// <summary>
         /// Writes a single OTLP LogRecord.
         /// </summary>
-        public void AddLogRecord<T>(string scopeName, LogEventInfo logEvent, string logMessage, IEnumerable<KeyValuePair<T, object?>>? properties)
+        public void AddLogRecord<T>(LogEventInfo logEvent, string logMessage, IEnumerable<KeyValuePair<T, object?>>? properties)
         {
-            EnsureScopeLogs(scopeName);
+            if (_scopeLogsWriter is null)
+                throw new InvalidOperationException("Cannot add log record before initializing scope logs.");
 
             // ScopeLogs.log_records (field 2)
             using (OtlpProtobufSerializer.BeginSubmessageField(_stream, 2))

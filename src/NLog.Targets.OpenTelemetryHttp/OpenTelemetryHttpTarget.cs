@@ -69,10 +69,14 @@ namespace NLog.Targets
     public class OpenTelemetryHttpTarget : HttpClientTarget
     {
         private static readonly SimpleLayout _defaultServiceName = new SimpleLayout("${appdomain:format=Friendly}");
+        private static readonly Layout _defaultOperatingSystem = Layout.FromMethod(static evt => ResolveOperatingSystem(), LayoutRenderOptions.ThreadAgnostic);
+        private static readonly SimpleLayout _defaultProcessId = new SimpleLayout("${processid}");
+
         private static readonly string EmptyTraceIdToHexString = default(System.Diagnostics.ActivityTraceId).ToHexString();
         private static readonly string EmptySpanIdToHexString = default(System.Diagnostics.ActivitySpanId).ToHexString();
 
         private OtlpProtobufSerializer _serializer = new OtlpProtobufSerializer();
+        private KeyValuePair<byte[], byte[]> _cachedResourcePayload;
         private Uri? _logsUrl;
         private readonly Stack<MemoryStream> _memoryStreamPool = new Stack<MemoryStream>();
         private List<MemoryStream>? _activeChunkStreams = new List<MemoryStream>();
@@ -88,6 +92,7 @@ namespace NLog.Targets
             TaskDelayMilliseconds = 50;     // Small delay to improve chance of batching and reducing number of HTTP requests.
             RetryDelayMilliseconds = 2500;  // Notice OTel SDK initial backoff is 5 secs
             RetryCount = 3;                 // Notice OTel SDK default max 5 retries
+            Layout = "${message}";
         }
 
         /// <summary>
@@ -95,6 +100,18 @@ namespace NLog.Targets
         /// </summary>
         /// <remarks>Default: <c>${appdomain:format=Friendly}</c>. Defaults to <c>Unknown</c> when empty value</remarks>
         public Layout ServiceName { get; set; } = _defaultServiceName;
+
+        /// <summary>
+        /// Gets or sets the OTLP resource <c>service.version</c> attribute value.
+        /// </summary>
+        /// <remarks>Default: <c>${assembly-version:Default=}</c>.</remarks>
+        public Layout ServiceVersion { get; set; } = "${assembly-version:Default=}";
+
+        /// <summary>
+        /// Gets or sets the OTLP resource <c>host.name</c> attribute value.
+        /// </summary>
+        /// <remarks>Default: <c>${hostname}</c>.</remarks>
+        public Layout HostName { get; set; } = "${hostname}";
 
         /// <summary>
         /// Gets or sets the OpenTelemetry instrumentation scope name.
@@ -131,6 +148,7 @@ namespace NLog.Targets
                 SpanId = SpanId,
             };
             _logsUrl = null;
+            _cachedResourcePayload = default;
             base.InitializeTarget();
         }
 
@@ -172,7 +190,7 @@ namespace NLog.Targets
             var output = RentMemoryStream();
             chunks.Add(output);
 
-            var batch = CreateNewBatch(output, logEvents[0]);
+            var batch = CreateNewBatch(output);
 
             for (int i = 0; i < logEvents.Count; i++)
             {
@@ -190,8 +208,7 @@ namespace NLog.Targets
 
                     output = RentMemoryStream();
                     chunks.Add(output);
-                    var nextEvent = logEvents[i + 1];
-                    batch = CreateNewBatch(output, nextEvent);
+                    batch = CreateNewBatch(output);
                 }
             }
 
@@ -199,42 +216,30 @@ namespace NLog.Targets
             await SendLastChunkAndAwaitPendingAsync(BuildHttpContent(output), pendingTasks, cancellationToken).ConfigureAwait(false);
         }
 
-        private OtlpBatchBuilder CreateNewBatch(MemoryStream stream, LogEventInfo firstEvent)
+        private OtlpBatchBuilder CreateNewBatch(MemoryStream stream)
         {
-            var batch = _serializer.BeginBatch(stream);
-
-            var serviceName = RenderLogEvent(ServiceName, firstEvent);
-            if (string.IsNullOrWhiteSpace(serviceName))
-                serviceName = "Unknown";
-
-            batch.AddResourceAttribute("service.name", serviceName);
-
-            for (int j = 0; j < ResourceAttributes.Count; ++j)
+            if (_cachedResourcePayload.Key is null)
             {
-                var attr = ResourceAttributes[j];
-                if (string.IsNullOrWhiteSpace(attr.Name))
-                    continue;
-
-                var value = RenderLogEvent(attr.Layout, firstEvent);
-                if (!attr.IncludeEmptyValue && string.IsNullOrWhiteSpace(value))
-                    continue;
-
-                batch.AddResourceAttribute(attr.Name, value);
+                var firstEvent = LogEventInfo.CreateNullEvent();
+                _cachedResourcePayload = OtlpBatchBuilder.CreateResourcePayload(ScopeName, GetResourceAttributes(firstEvent));
             }
 
+            var batch = _serializer.BeginBatch(stream);
+            batch.AddResourcePayload(_cachedResourcePayload);
             return batch;
         }
 
         private void WriteLogRecord(ref OtlpBatchBuilder batch, LogEventInfo logEvent)
         {
+            var logMessage = RenderLogEvent(Layout, logEvent);
             var properties = GetLogEventProperties(logEvent);
             if (properties is null && (IncludeEventProperties && logEvent.HasProperties))
             {
-                batch.AddLogRecord(ScopeName, logEvent, RenderLogEvent(Layout, logEvent), logEvent.Properties);
+                batch.AddLogRecord(logEvent, logMessage, logEvent.Properties);
             }
             else
             {
-                batch.AddLogRecord(ScopeName, logEvent, RenderLogEvent(Layout, logEvent), properties);
+                batch.AddLogRecord(logEvent, logMessage, properties);
             }
         }
 
@@ -264,6 +269,82 @@ namespace NLog.Targets
                     continue;
                 yield return new KeyValuePair<string, object?>(prop.Name, value);
             }
+        }
+
+        IEnumerable<KeyValuePair<string, string>> GetResourceAttributes(LogEventInfo firstEvent)
+        {
+            Layout? serviceNameLayout = ServiceName;
+            Layout? serviceVersionLayout = ServiceVersion;
+            Layout? hostNameLayout = HostName;
+            Layout? operatingSystemLayout = _defaultOperatingSystem;
+            Layout? processIdLayout = _defaultProcessId;
+
+            for (int j = 0; j < ResourceAttributes.Count; ++j)
+            {
+                var attr = ResourceAttributes[j];
+                if (string.IsNullOrWhiteSpace(attr.Name))
+                    continue;
+
+                var value = RenderLogEvent(attr.Layout, firstEvent);
+                if (!attr.IncludeEmptyValue && string.IsNullOrWhiteSpace(value))
+                    continue;
+
+                if (attr.Name == "service.name")
+                    serviceNameLayout = null;
+                else if (attr.Name == "service.version")
+                    serviceVersionLayout = null;
+                else if (attr.Name == "host.name")
+                    hostNameLayout = null;
+                else if (attr.Name == "os.type")
+                    operatingSystemLayout = null;
+                else if (attr.Name == "process.id")
+                    processIdLayout = null;
+                yield return new KeyValuePair<string, string>(attr.Name, value);
+            }
+
+            if (serviceNameLayout != null)
+            {
+                var serviceName = RenderLogEvent(serviceNameLayout, firstEvent);
+                if (string.IsNullOrEmpty(serviceName))
+                    serviceName = "Unknown";
+                yield return new KeyValuePair<string, string>("service.name", serviceName);
+            }
+            if (serviceVersionLayout != null)
+            {
+                var serviceVersion = RenderLogEvent(serviceVersionLayout, firstEvent);
+                if (!string.IsNullOrEmpty(serviceVersion))
+                    yield return new KeyValuePair<string, string>("service.version", serviceVersion);
+            }
+            if (processIdLayout != null)
+            {
+                var processId = RenderLogEvent(processIdLayout, firstEvent);
+                if (!string.IsNullOrEmpty(processId))
+                    yield return new KeyValuePair<string, string>("process.id", processId);
+            }
+            if (hostNameLayout != null)
+            {
+                var hostName = RenderLogEvent(hostNameLayout, firstEvent);
+                if (!string.IsNullOrEmpty(hostName))
+                    yield return new KeyValuePair<string, string>("host.name", hostName);
+            }
+            if (operatingSystemLayout != null)
+            {
+                var operatingSystem = RenderLogEvent(operatingSystemLayout, firstEvent);
+                if (!string.IsNullOrEmpty(operatingSystem))
+                    yield return new KeyValuePair<string, string>("os.type", operatingSystem);
+            }
+        }
+
+        private static string ResolveOperatingSystem()
+        {
+            if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+                return "windows";
+            else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux))
+                return "linux";
+            else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX))
+                return "osx";
+            else
+                return "unknown";
         }
 
         private async Task SendLastChunkAndAwaitPendingAsync(HttpContent lastContent, List<Task<HttpResponseMessage>>? pendingTasks, CancellationToken cancellationToken)
@@ -300,7 +381,7 @@ namespace NLog.Targets
 
             try
             {
-                var batch = CreateNewBatch(batchStream, logEvents[0]);
+                var batch = CreateNewBatch(batchStream);
 
                 for (int i = 0; i < logEvents.Count; i++)
                 {
@@ -317,8 +398,7 @@ namespace NLog.Targets
 
                         batchStream = RentMemoryStream();
                         chunks.Add(batchStream);
-                        var nextBatch = logEvents[i + 1];
-                        batch = CreateNewBatch(batchStream, nextBatch);
+                        batch = CreateNewBatch(batchStream);
                     }
                 }
 

@@ -61,6 +61,8 @@ Supports standard OpenTelemetry environment variables as fallback defaults:
 | ------------------------ | -------------------------------| -----------------------------------------------------------------------------|
 | `url`                    | OTEL_EXPORTER_OTLP_ENDPOINT    | OTLP/HTTP endpoint URL. Automatically append `/v1/logs` when missing         |
 | `serviceName`            | `${appdomain:format=Friendly}` | OpenTelemetry `service.name` resource attribute.                             |
+| `serviceVersion`         | `${assembly-version:Default=}` | OpenTelemetry `service.version` resource attribute.                          |
+| `hostName`               | `${hostname}`                  | OpenTelemetry `host.name` resource attribute.                                |
 | `scopeName`              | `NLog`                         | OpenTelemetry instrumentation scope name.                                    |
 | `layout`                 | `${message}`                   | Layout used for the OTLP log body (message text).                            |
 | `traceId`                | `${activity:property=TraceId}` | Layout used to populate the OTLP LogRecord TraceId field.                    |
