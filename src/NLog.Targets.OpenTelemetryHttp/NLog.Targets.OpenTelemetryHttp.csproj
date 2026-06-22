@@ -7,7 +7,7 @@
     <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' ">net471;netstandard2.0;netstandard2.1;net8.0;net10.0</TargetFrameworks>
 
     <VersionPrefix>6.0.5</VersionPrefix>
-    <VersionSuffix>Preview1</VersionSuffix>
+    <VersionSuffix>Preview2</VersionSuffix>
     <AssemblyVersion>6.0.0.0</AssemblyVersion>
     <!-- Strong AssemblyVersion must be fixed on 6.0.0.0 -->
     <AppVeyorBuildNumber>$(APPVEYOR_BUILD_NUMBER)</AppVeyorBuildNumber>
@@ -26,7 +26,7 @@
     <PackageReleaseNotes>
 Changelog:
 
-- Preview1 Release of OpenTelemetryHttpTarget.
+- Preview2 Release of OpenTelemetryHttpTarget.
     </PackageReleaseNotes>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>NLog;OpenTelemetry;OTLP;logging;log</PackageTags>

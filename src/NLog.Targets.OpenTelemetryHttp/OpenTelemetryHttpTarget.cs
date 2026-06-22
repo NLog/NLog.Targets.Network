@@ -58,7 +58,6 @@ namespace NLog.Targets
     /// <c>OTEL_EXPORTER_OTLP_HEADERS</c>, <c>OTEL_EXPORTER_OTLP_LOGS_HEADERS</c>,
     /// <c>OTEL_EXPORTER_OTLP_COMPRESSION</c>, <c>OTEL_EXPORTER_OTLP_LOGS_COMPRESSION</c>,
     /// <c>OTEL_EXPORTER_OTLP_TIMEOUT</c>, <c>OTEL_EXPORTER_OTLP_LOGS_TIMEOUT</c>,
-    /// <c>OTEL_EXPORTER_OTLP_PROTOCOL</c>, <c>OTEL_EXPORTER_OTLP_LOGS_PROTOCOL</c>,
     /// <c>OTEL_SERVICE_NAME</c>, <c>OTEL_RESOURCE_ATTRIBUTES</c>.
     /// Environment variables are resolved using NLog <c>${environment}</c> layout renderer.
     /// </para>
@@ -70,10 +69,15 @@ namespace NLog.Targets
     public class OpenTelemetryHttpTarget : HttpClientTarget
     {
         private static readonly SimpleLayout _defaultServiceName = new SimpleLayout("${appdomain:format=Friendly}");
+        private static readonly SimpleLayout _defaultServiceVersion = new SimpleLayout("${assembly-version:Default=}");
+        private static readonly SimpleLayout _defaultHostName = new SimpleLayout("${hostname}");
+        private static readonly Layout _defaultOperatingSystem = Layout.FromMethod(static evt => ResolveOperatingSystem(), LayoutRenderOptions.ThreadAgnostic);
+
         private static readonly string EmptyTraceIdToHexString = default(System.Diagnostics.ActivityTraceId).ToHexString();
         private static readonly string EmptySpanIdToHexString = default(System.Diagnostics.ActivitySpanId).ToHexString();
 
         private OtlpProtobufSerializer _serializer = new OtlpProtobufSerializer();
+        private KeyValuePair<byte[], byte[]> _cachedResourcePayload;
         private Uri? _logsUrl;
         private readonly Stack<MemoryStream> _memoryStreamPool = new Stack<MemoryStream>();
         private List<MemoryStream>? _activeChunkStreams = new List<MemoryStream>();
@@ -84,11 +88,12 @@ namespace NLog.Targets
         public OpenTelemetryHttpTarget()
         {
             ContentType = "application/x-protobuf"; // application/json not supported, only protobuf as OTLP_PROTOCOL
-            IncludeEventProperties = true;
             BatchSize = 200;                // Consider doubling this if enabling compression
             TaskDelayMilliseconds = 50;     // Small delay to improve chance of batching and reducing number of HTTP requests.
-            RetryDelayMilliseconds = 2500;  // Notice OTel SDK initial backoff is 5 secs
+            RetryDelayMilliseconds = 5000;  // Notice OTel SDK initial backoff is 5 secs
             RetryCount = 3;                 // Notice OTel SDK default max 5 retries
+            Layout = "${message}";
+            IncludeEventProperties = true;
         }
 
         /// <summary>
@@ -96,6 +101,18 @@ namespace NLog.Targets
         /// </summary>
         /// <remarks>Default: <c>${appdomain:format=Friendly}</c>. Defaults to <c>Unknown</c> when empty value</remarks>
         public Layout ServiceName { get; set; } = _defaultServiceName;
+
+        /// <summary>
+        /// Gets or sets the OTLP resource <c>service.version</c> attribute value.
+        /// </summary>
+        /// <remarks>Default: <c>${assembly-version:Default=}</c>.</remarks>
+        public Layout ServiceVersion { get; set; } = _defaultServiceVersion;
+
+        /// <summary>
+        /// Gets or sets the OTLP resource <c>host.name</c> attribute value.
+        /// </summary>
+        /// <remarks>Default: <c>${hostname}</c>.</remarks>
+        public Layout HostName { get; set; } = _defaultHostName;
 
         /// <summary>
         /// Gets or sets the OpenTelemetry instrumentation scope name.
@@ -132,6 +149,7 @@ namespace NLog.Targets
                 SpanId = SpanId,
             };
             _logsUrl = null;
+            _cachedResourcePayload = default;
             base.InitializeTarget();
         }
 
@@ -154,7 +172,7 @@ namespace NLog.Targets
             try
             {
                 if (Compress != HttpCompressionType.None)
-                    await WriteCompressedAsync(logEvents, chunks, cancellationToken).ConfigureAwait(false);
+                    await WriteGZipCompressedAsync(logEvents, chunks, cancellationToken).ConfigureAwait(false);
                 else
                     await WriteRawAsync(logEvents, chunks, cancellationToken).ConfigureAwait(false);
             }
@@ -173,123 +191,56 @@ namespace NLog.Targets
             var output = RentMemoryStream();
             chunks.Add(output);
 
+            var batch = CreateNewBatch(output);
+
             for (int i = 0; i < logEvents.Count; i++)
             {
-                SerializeLogEvent(logEvents[i], output);
+                var logEvent = logEvents[i];
+
+                WriteLogRecord(ref batch, logEvent);
 
                 if (output.Length >= MaxPayloadSizeBytes && i < logEvents.Count - 1)
                 {
+                    batch.Dispose();    //  Complete batch, and flush to output stream
                     var sendTask = HttpClientSendAsync(_logsUrl, BuildHttpContent(output), cancellationToken);
+
                     pendingTasks ??= new List<Task<HttpResponseMessage>>();
                     pendingTasks.Add(sendTask);
+
                     output = RentMemoryStream();
                     chunks.Add(output);
+                    batch = CreateNewBatch(output);
                 }
             }
 
+            batch.Dispose();    //  Complete batch, and flush to output stream
             await SendLastChunkAndAwaitPendingAsync(BuildHttpContent(output), pendingTasks, cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task SendLastChunkAndAwaitPendingAsync(HttpContent lastContent, List<Task<HttpResponseMessage>>? pendingTasks, CancellationToken cancellationToken)
+        private OtlpBatchBuilder CreateNewBatch(MemoryStream stream)
         {
-            using var lastResponse = await HttpClientSendAsync(_logsUrl, lastContent, cancellationToken).ConfigureAwait(false);
-            if (pendingTasks != null)
+            if (_cachedResourcePayload.Key is null)
             {
-                if (pendingTasks.Count == 1)
-                {
-                    using var response = await pendingTasks[0].ConfigureAwait(false);
-                }
-                else
-                {
-                    var responses = await Task.WhenAll(pendingTasks).ConfigureAwait(false);
-                    foreach (var response in responses)
-                        response?.Dispose();
-                }
-            }
-        }
-
-        private static ByteArrayContent BuildHttpContent(MemoryStream output)
-        {
-            return new ByteArrayContent(output.GetBuffer(), 0, (int)output.Length);
-        }
-
-        private async Task WriteCompressedAsync(IList<LogEventInfo> logEvents, List<MemoryStream> chunks, CancellationToken cancellationToken)
-        {
-            List<Task<HttpResponseMessage>>? pendingTasks = null;
-            var compressionLevel = Compress == HttpCompressionType.GZipFast ? CompressionLevel.Fastest : CompressionLevel.Optimal;
-            var eventBuffer = RentMemoryStream();
-            var compressedOutput = RentMemoryStream();
-            chunks.Add(compressedOutput);
-            GZipStream? gzipStream = new GZipStream(compressedOutput, compressionLevel, leaveOpen: true);
-            try
-            {
-                for (int i = 0; i < logEvents.Count; i++)
-                {
-                    eventBuffer.Position = 0;
-                    eventBuffer.SetLength(0);
-                    SerializeLogEvent(logEvents[i], eventBuffer);
-                    gzipStream.Write(eventBuffer.GetBuffer(), 0, (int)eventBuffer.Length);
-
-                    if (compressedOutput.Length >= MaxPayloadSizeBytes && i < logEvents.Count - 1)
-                    {
-                        gzipStream.Dispose();
-                        gzipStream = null;
-                        var sendTask = HttpClientSendAsync(_logsUrl, BuildGzipContent(compressedOutput), cancellationToken);
-                        pendingTasks ??= new List<Task<HttpResponseMessage>>();
-                        pendingTasks.Add(sendTask);
-                        compressedOutput = RentMemoryStream();
-                        chunks.Add(compressedOutput);
-                        gzipStream = new GZipStream(compressedOutput, compressionLevel, leaveOpen: true);
-                    }
-                }
-
-                gzipStream.Dispose();
-                gzipStream = null;
-            }
-            finally
-            {
-                gzipStream?.Dispose();
-                ReturnMemoryStream(eventBuffer);
+                var firstEvent = LogEventInfo.CreateNullEvent();
+                _cachedResourcePayload = OtlpBatchBuilder.CreateResourcePayload(ScopeName, GetResourceAttributes(firstEvent));
             }
 
-            await SendLastChunkAndAwaitPendingAsync(BuildGzipContent(compressedOutput), pendingTasks, cancellationToken).ConfigureAwait(false);
+            var batch = _serializer.BeginBatch(stream);
+            batch.AddResourcePayload(_cachedResourcePayload);
+            return batch;
         }
 
-        private static HttpContent BuildGzipContent(MemoryStream compressedPayload)
+        private void WriteLogRecord(ref OtlpBatchBuilder batch, LogEventInfo logEvent)
         {
-            var content = new ByteArrayContent(compressedPayload.GetBuffer(), 0, (int)compressedPayload.Length);
-            content.Headers.ContentEncoding.Add("gzip");
-            return content;
-        }
-
-        private void SerializeLogEvent(LogEventInfo logEvent, MemoryStream output)
-        {
-            using var builder = _serializer.BeginRecord(output);
-
-            var serviceName = RenderLogEvent(ServiceName, logEvent);
-            if (serviceName is null || string.IsNullOrWhiteSpace(serviceName))
-                serviceName = "Unknown";
-            builder.AddResourceAttribute("service.name", serviceName);
-
-            for (int j = 0; j < ResourceAttributes.Count; j++)
-            {
-                var attr = ResourceAttributes[j];
-                if (attr.Name is null || string.IsNullOrWhiteSpace(attr.Name))
-                    continue;
-                var value = RenderLogEvent(attr.Layout, logEvent);
-                if (!attr.IncludeEmptyValue && string.IsNullOrWhiteSpace(value))
-                    continue;
-                builder.AddResourceAttribute(attr.Name, value);
-            }
-
+            var logMessage = RenderLogEvent(Layout, logEvent);
             var properties = GetLogEventProperties(logEvent);
             if (properties is null && (IncludeEventProperties && logEvent.HasProperties))
             {
-                builder.AddScopeLogs(ScopeName, logEvent, RenderLogEvent(Layout, logEvent), logEvent.Properties);
+                batch.AddLogRecord(logEvent, logMessage, logEvent.Properties);
             }
             else
             {
-                builder.AddScopeLogs(ScopeName, logEvent, RenderLogEvent(Layout, logEvent), properties);
+                batch.AddLogRecord(logEvent, logMessage, properties);
             }
         }
 
@@ -319,6 +270,197 @@ namespace NLog.Targets
                     continue;
                 yield return new KeyValuePair<string, object?>(prop.Name, value);
             }
+        }
+
+        IEnumerable<KeyValuePair<string, object>> GetResourceAttributes(LogEventInfo firstEvent)
+        {
+            Layout? serviceNameLayout = ServiceName;
+            Layout? serviceVersionLayout = ServiceVersion;
+            Layout? hostNameLayout = HostName;
+            Layout? operatingSystemLayout = _defaultOperatingSystem;
+            int? processId =
+#if NET
+                Environment.ProcessId;
+#else
+                System.Diagnostics.Process.GetCurrentProcess().Id;
+#endif
+            string telemetrySdkLanguage = "dotnet";
+            string telemetrySdkName = typeof(OpenTelemetryHttpTarget).ToString();
+            string telemetrySdkVersion = typeof(OpenTelemetryHttpTarget).Assembly.GetName().Version?.ToString() ?? string.Empty;
+
+            for (int j = 0; j < ResourceAttributes.Count; ++j)
+            {
+                var attr = ResourceAttributes[j];
+                if (string.IsNullOrWhiteSpace(attr.Name))
+                    continue;
+
+                var stringValue = RenderLogEvent(attr.Layout, firstEvent);
+                if (!attr.IncludeEmptyValue && string.IsNullOrWhiteSpace(stringValue))
+                    continue;
+
+                object value = stringValue;
+
+                if (attr.Name == "service.name")
+                    serviceNameLayout = null;
+                else if (attr.Name == "service.version")
+                    serviceVersionLayout = null;
+                else if (attr.Name == "process.id")
+                {
+                    processId = null;
+                    if (long.TryParse(stringValue, out var parsedProcessId))
+                        value = parsedProcessId;
+                }
+                else if (attr.Name == "host.name")
+                    hostNameLayout = null;
+                else if (attr.Name == "os.type")
+                    operatingSystemLayout = null;
+                else if (attr.Name == "telemetry.sdk.language")
+                    telemetrySdkLanguage = string.Empty;
+                else if (attr.Name == "telemetry.sdk.name")
+                    telemetrySdkName = string.Empty;
+                else if (attr.Name == "telemetry.sdk.version")
+                    telemetrySdkVersion = string.Empty;
+
+                yield return new KeyValuePair<string, object>(attr.Name, value);
+            }
+
+            if (serviceNameLayout != null)
+            {
+                var serviceName = RenderLogEvent(serviceNameLayout, firstEvent);
+                if (string.IsNullOrEmpty(serviceName))
+                    serviceName = "Unknown";
+                yield return new KeyValuePair<string, object>("service.name", serviceName);
+            }
+            if (serviceVersionLayout != null)
+            {
+                var serviceVersion = RenderLogEvent(serviceVersionLayout, firstEvent);
+                if (!string.IsNullOrEmpty(serviceVersion))
+                    yield return new KeyValuePair<string, object>("service.version", serviceVersion);
+            }
+            if (processId.HasValue)
+            {
+                yield return new KeyValuePair<string, object>("process.id", processId.Value);
+            }
+            if (hostNameLayout != null)
+            {
+                var hostName = RenderLogEvent(hostNameLayout, firstEvent);
+                if (!string.IsNullOrEmpty(hostName))
+                    yield return new KeyValuePair<string, object>("host.name", hostName);
+            }
+            if (operatingSystemLayout != null)
+            {
+                var operatingSystem = RenderLogEvent(operatingSystemLayout, firstEvent);
+                if (!string.IsNullOrEmpty(operatingSystem))
+                    yield return new KeyValuePair<string, object>("os.type", operatingSystem);
+            }
+            if (!string.IsNullOrEmpty(telemetrySdkLanguage))
+                yield return new KeyValuePair<string, object>("telemetry.sdk.language", telemetrySdkLanguage);
+            if (!string.IsNullOrEmpty(telemetrySdkName))
+                yield return new KeyValuePair<string, object>("telemetry.sdk.name", telemetrySdkName);
+            if (!string.IsNullOrEmpty(telemetrySdkVersion))
+                yield return new KeyValuePair<string, object>("telemetry.sdk.version", telemetrySdkVersion);
+        }
+
+        private static string ResolveOperatingSystem()
+        {
+            if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+                return "windows";
+            else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux))
+                return "linux";
+            else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX))
+                return "osx";
+            else
+                return "unknown";
+        }
+
+        private async Task SendLastChunkAndAwaitPendingAsync(HttpContent lastContent, List<Task<HttpResponseMessage>>? pendingTasks, CancellationToken cancellationToken)
+        {
+            using var lastResponse = await HttpClientSendAsync(_logsUrl, lastContent, cancellationToken).ConfigureAwait(false);
+            if (pendingTasks != null)
+            {
+                if (pendingTasks.Count == 1)
+                {
+                    using var response = await pendingTasks[0].ConfigureAwait(false);
+                }
+                else
+                {
+                    var responses = await Task.WhenAll(pendingTasks).ConfigureAwait(false);
+                    foreach (var response in responses)
+                        response?.Dispose();
+                }
+            }
+        }
+
+        private static ByteArrayContent BuildHttpContent(MemoryStream output)
+        {
+            return new ByteArrayContent(output.GetBuffer(), 0, (int)output.Length);
+        }
+
+        private async Task WriteGZipCompressedAsync(
+            IList<LogEventInfo> logEvents,
+            List<MemoryStream> chunks,
+            CancellationToken cancellationToken)
+        {
+            List<Task<HttpResponseMessage>>? pendingTasks = null;
+            var batchStream = RentMemoryStream();
+            chunks.Add(batchStream);
+
+            try
+            {
+                var batch = CreateNewBatch(batchStream);
+
+                for (int i = 0; i < logEvents.Count; i++)
+                {
+                    WriteLogRecord(ref batch, logEvents[i]);
+
+                    if (batchStream.Length >= MaxPayloadSizeBytes && i < logEvents.Count - 1)
+                    {
+                        batch.Dispose();
+
+                        var compressedStream = WriteGZipCompressed(batchStream);
+                        chunks.Add(compressedStream);
+                        pendingTasks ??= new List<Task<HttpResponseMessage>>();
+                        pendingTasks.Add(HttpClientSendAsync(_logsUrl, BuildGzipContent(compressedStream), cancellationToken));
+
+                        batchStream = RentMemoryStream();
+                        chunks.Add(batchStream);
+                        batch = CreateNewBatch(batchStream);
+                    }
+                }
+
+                batch.Dispose();
+
+                var finalCompressed = WriteGZipCompressed(batchStream);
+                chunks.Add(finalCompressed);
+
+                await SendLastChunkAndAwaitPendingAsync(
+                    BuildGzipContent(finalCompressed),
+                    pendingTasks,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                ReturnMemoryStream(batchStream);
+            }
+        }
+
+        private MemoryStream WriteGZipCompressed(MemoryStream uncompressed)
+        {
+            var compressedOutput = RentMemoryStream();
+            var compressionLevel = Compress == HttpCompressionType.GZipFast ? CompressionLevel.Fastest : CompressionLevel.Optimal;
+            using (var gzip = new GZipStream(compressedOutput, compressionLevel, leaveOpen: true))
+            {
+                gzip.Write(uncompressed.GetBuffer(), 0, (int)uncompressed.Length);
+            }
+            compressedOutput.Position = 0;
+            return compressedOutput;
+        }
+
+        private static HttpContent BuildGzipContent(MemoryStream compressedPayload)
+        {
+            var content = new ByteArrayContent(compressedPayload.GetBuffer(), 0, (int)compressedPayload.Length);
+            content.Headers.ContentEncoding.Add("gzip");
+            return content;
         }
 
         private MemoryStream RentMemoryStream()
@@ -404,7 +546,7 @@ namespace NLog.Targets
                 if (string.IsNullOrWhiteSpace(timeoutStr))
                     timeoutStr = GetEnvironmentValueFromLayout("OTEL_EXPORTER_OTLP_TIMEOUT");
                 if (!string.IsNullOrWhiteSpace(timeoutStr) && int.TryParse(timeoutStr!.Trim(), out var timeoutMs) && timeoutMs > 0)
-                    SendTimeoutSeconds = Math.Max(1, timeoutMs / 1000);
+                    SendTimeoutSeconds = (int)Math.Ceiling(timeoutMs / 1000.0);
             }
 
             // Resource Attributes: OTEL_RESOURCE_ATTRIBUTES (format: key1=value1,key2=value2)
@@ -477,6 +619,16 @@ namespace NLog.Targets
                 {
                     if (ReferenceEquals(ServiceName, _defaultServiceName) && !string.IsNullOrWhiteSpace(value))
                         ServiceName = value;
+                }
+                else if (string.Equals(key, "service.version", StringComparison.Ordinal))
+                {
+                    if (ReferenceEquals(ServiceVersion, _defaultServiceVersion) && !string.IsNullOrWhiteSpace(value))
+                        ServiceVersion = value;
+                }
+                else if (string.Equals(key, "host.name", StringComparison.Ordinal))
+                {
+                    if (ReferenceEquals(HostName, _defaultHostName) && !string.IsNullOrWhiteSpace(value))
+                        HostName = value;
                 }
                 else
                 {

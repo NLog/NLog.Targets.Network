@@ -70,32 +70,15 @@ namespace NLog.Internal
             return new OtlpLogRecordBuilder(this, output);
         }
 
-        /// <summary>
-        /// Builds a ScopeLogs protobuf message containing the instrumentation scope and a single log record.
-        /// </summary>
-        private void BuildScopeLogs<T>(MemoryStream stream, string scopeName, LogEventInfo logEvent, string logMessage, IEnumerable<KeyValuePair<T, object?>>? logProperties)
+        public OtlpBatchBuilder BeginBatch(MemoryStream output)
         {
-            // ScopeLogs { InstrumentationScope scope = 1; repeated LogRecord log_records = 2 }
-            if (!string.IsNullOrEmpty(scopeName))
-            {
-                // InstrumentationScope { string name = 1; string version = 2 }
-                var scopeNameMaxBytes = Encoding.UTF8.GetMaxByteCount(scopeName.Length);
-                using (BeginSubmessageField(stream, 1, scopeNameMaxBytes))
-                {
-                    WriteStringField(stream, 1, scopeName, scopeNameMaxBytes);
-                }
-            }
-
-            using (BeginSubmessageField(stream, 2))
-            {
-                BuildLogRecord(stream, logEvent, logMessage, logProperties);
-            }
+            return new OtlpBatchBuilder(this, output);
         }
 
         /// <summary>
         /// Builds a LogRecord protobuf message for a single log event.
         /// </summary>
-        private void BuildLogRecord<T>(MemoryStream stream, LogEventInfo logEvent, string logMessage, IEnumerable<KeyValuePair<T, object?>>? logProperties)
+        internal void BuildLogRecord<T>(MemoryStream stream, LogEventInfo logEvent, string logMessage, IEnumerable<KeyValuePair<T, object?>>? logProperties)
         {
             // LogRecord proto field numbers:
             //   fixed64 time_unix_nano = 1
@@ -115,7 +98,6 @@ namespace NLog.Internal
                 WriteStringField(stream, 3, logEvent.Level.ToString());
             }
 
-            // body = AnyValue { string string_value = 1 }
             if (!string.IsNullOrEmpty(logMessage))
             {
                 BuildAnyValueString(stream, 5, logMessage);
@@ -123,8 +105,9 @@ namespace NLog.Internal
 
             if (!string.IsNullOrEmpty(logEvent.LoggerName))
             {
-                WriteKeyStringValue(stream, 6, "LoggerName", logEvent.LoggerName);
+                WriteKeyStringValue(stream, 6, "logger.name", logEvent.LoggerName);
             }
+
 
             if (logEvent.Exception != null)
             {
@@ -135,6 +118,24 @@ namespace NLog.Internal
 
             if (logProperties != null)
             {
+                string eventId = string.Empty;
+                string eventName = string.Empty;
+
+                if (logEvent.HasProperties)
+                {
+                    WriteKeyStringValue(stream, 6, "log.record.original", logEvent.Message);    // Message Template with placeholders
+                    if (logEvent.Properties.TryGetValue("EventId", out var eventIdObj) && eventIdObj != null)
+                    {
+                        eventId = "EventId";
+                        WriteKeyValue(stream, 6, "event.id", eventIdObj);
+                    }
+                    if (logEvent.Properties.TryGetValue("EventName", out var eventNameObj) && eventNameObj != null)
+                    {
+                        eventName = "EventName";
+                        WriteKeyValue(stream, 6, "event.name", eventNameObj);
+                    }
+                }
+
                 var enumerator = logProperties.GetEnumerator();
                 try
                 {
@@ -143,6 +144,11 @@ namespace NLog.Internal
                         var prop = enumerator.Current;
                         var key = prop.Key?.ToString();
                         if (key is null || string.IsNullOrEmpty(key))
+                            continue;
+
+                        if (!ReferenceEquals(eventId, string.Empty) && key == eventId)
+                            continue;
+                        if (!ReferenceEquals(eventName, string.Empty) && key == eventName)
                             continue;
 
                         WriteKeyValue(stream, 6, key, prop.Value);
@@ -175,54 +181,69 @@ namespace NLog.Internal
         {
             private readonly OtlpProtobufSerializer _serializer;
             private readonly MemoryStream _stream;
-            private readonly SubmessageWriter _requestWriter;
+            private readonly SubmessageWriter _resourceLogsWriter;
             private readonly SubmessageWriter _resourceWriter;
-            private bool _completed;
+            private SubmessageWriter? _scopeLogsWriter;
 
             internal OtlpLogRecordBuilder(OtlpProtobufSerializer serializer, MemoryStream stream)
             {
                 _serializer = serializer;
                 _stream = stream;
-                _completed = false;
 
-                // ExportLogsServiceRequest { repeated ResourceLogs resource_logs = 1 }
-                _requestWriter = BeginSubmessageField(stream, 1);
-                // ResourceLogs { Resource resource = 1; ... }
+                // ExportLogsServiceRequest.ResourceLogs
+                _resourceLogsWriter = BeginSubmessageField(stream, 1);
+                // ResourceLogs.Resource
                 _resourceWriter = BeginSubmessageField(stream, 1);
+                _scopeLogsWriter = null;
             }
 
-            /// <summary>Writes a resource attribute KeyValue into the open Resource submessage.</summary>
-            public void AddResourceAttribute(string attributeName, string attributeValue)
+            public void AddResourceAttribute(string key, object value)
             {
-                WriteKeyStringValue(_stream, 1, attributeName, attributeValue);
+                if (_scopeLogsWriter != null)
+                    throw new InvalidOperationException("Cannot add Resource attributes after ScopeLogs has started.");
+                WriteKeyValue(_stream, 1, key, value);
             }
 
-            /// <summary>Closes the Resource submessage, writes ScopeLogs, and finalizes the OTLP message.</summary>
-            public void AddScopeLogs<T>(string scopeName, LogEventInfo logEvent, string logMessage, IEnumerable<KeyValuePair<T, object?>>? logProperties = null)
+            public void BeginScope(string scopeName)
             {
-                if (_completed) return;
-                _completed = true;
+                if (_scopeLogsWriter != null)
+                    throw new InvalidOperationException("Only one ScopeLogs is supported per builder.");
 
-                _resourceWriter.Dispose();
+                _resourceWriter.Dispose();  // Ensure Resource is closed before starting ScopeLogs
 
-                // ResourceLogs { ... repeated ScopeLogs scope_logs = 2 }
+                // ScopeLogs { InstrumentationScope scope = 1; repeated LogRecord log_records = 2 }
+                _scopeLogsWriter = BeginSubmessageField(_stream, 2);
+                if (!string.IsNullOrEmpty(scopeName))
+                {
+                    // InstrumentationScope { string name = 1; string version = 2 }
+                    using (BeginSubmessageField(_stream, 1))
+                    {
+                        WriteStringField(_stream, 1, scopeName);
+                    }
+                }
+            }
+
+            public void AddLogRecord<T>(LogEventInfo logEvent, string logMessage, IEnumerable<KeyValuePair<T, object?>>? logProperties)
+            {
+                if (_scopeLogsWriter == null)
+                    throw new InvalidOperationException("ScopeLogs must be started before adding LogRecords.");
+
                 using (BeginSubmessageField(_stream, 2))
                 {
-                    _serializer.BuildScopeLogs(_stream, scopeName, logEvent, logMessage, logProperties);
+                    _serializer.BuildLogRecord(_stream, logEvent, logMessage, logProperties);
                 }
-
-                _requestWriter.Dispose();
             }
 
             public void Complete()
             {
-                if (_completed) return;
-                _completed = true;
-                _resourceWriter.Dispose();
-                _requestWriter.Dispose();
+                if (_scopeLogsWriter == null)
+                    throw new InvalidOperationException("Completed but without adding ScopeLogs.");
+
+                _scopeLogsWriter?.Dispose();
+                _scopeLogsWriter = null;
+                _resourceLogsWriter.Dispose();
             }
 
-            /// <inheritdoc cref="Complete"/>
             public void Dispose() => Complete();
         }
 
@@ -470,7 +491,7 @@ namespace NLog.Internal
             }
         }
 
-        private static void WriteKeyValue(MemoryStream parent, int fieldNumber, string key, object? value, int recursionDepth = 0)
+        internal static void WriteKeyValue(MemoryStream parent, int fieldNumber, string key, object? value, int recursionDepth = 0)
         {
             if (value is string stringValue)
             {
@@ -528,7 +549,7 @@ namespace NLog.Internal
 #endif
         }
 
-        private static void WriteStringField(MemoryStream stream, int fieldNumber, string value)
+        internal static void WriteStringField(MemoryStream stream, int fieldNumber, string value)
         {
             WriteStringField(stream, fieldNumber, value, Encoding.UTF8.GetMaxByteCount(value.Length));
         }
@@ -619,12 +640,12 @@ namespace NLog.Internal
         }
 #endif
 
-        private static SubmessageWriter BeginSubmessageField(MemoryStream stream, int fieldNumber, int maxByteCount = int.MaxValue)
+        internal static SubmessageWriter BeginSubmessageField(MemoryStream stream, int fieldNumber, int maxByteCount = int.MaxValue)
         {
             return new SubmessageWriter(stream, fieldNumber, maxByteCount);
         }
 
-        private readonly struct SubmessageWriter : IDisposable
+        internal readonly struct SubmessageWriter : IDisposable
         {
             // Protobuf allows non-minimal (padded) varints — decoders must accept them.
             // fixedLength=false reserves 2 bytes (up to 16,383 bytes content) for small leaf nodes.
@@ -757,7 +778,7 @@ namespace NLog.Internal
             return utcTicks > 0 ? (ulong)utcTicks * 100UL : 0UL;
         }
 
-        internal static int MapSeverityNumber(LogLevel? level)
+        private static int MapSeverityNumber(LogLevel? level)
         {
             if (level == LogLevel.Trace) return 1;   // SEVERITY_NUMBER_TRACE
             if (level == LogLevel.Debug) return 5;   // SEVERITY_NUMBER_DEBUG

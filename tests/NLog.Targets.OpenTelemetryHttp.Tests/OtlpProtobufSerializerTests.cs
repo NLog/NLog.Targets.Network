@@ -31,13 +31,11 @@
 // THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-namespace NLog.Targets.HttpOTLP.Tests
+namespace NLog.Targets.OpenTelemetryHttp.Tests
 {
     using System;
     using System.Collections.Generic;
     using System.IO;
-    using System.Linq;
-    using System.Text;
     using NLog.Internal;
     using Xunit;
 
@@ -46,19 +44,60 @@ namespace NLog.Targets.HttpOTLP.Tests
     /// against the OpenTelemetry OTLP logs.proto specification without requiring an HTTP server.
     /// </summary>
     /// <remarks>
-    /// Proto field references:
-    ///   ExportLogsServiceRequest { repeated ResourceLogs resource_logs = 1 }
-    ///   ResourceLogs { Resource resource = 1; repeated ScopeLogs scope_logs = 2 }
-    ///   Resource { repeated KeyValue attributes = 1 }
-    ///   ScopeLogs { InstrumentationScope scope = 1; repeated LogRecord log_records = 2 }
-    ///   InstrumentationScope { string name = 1 }
-    ///   LogRecord { fixed64 time_unix_nano = 1; SeverityNumber severity_number = 2; string severity_text = 3;
-    ///               AnyValue body = 5; repeated KeyValue attributes = 6; bytes trace_id = 9; bytes span_id = 10 }
-    ///   AnyValue { string string_value = 1; bool bool_value = 2; int64 int_value = 3; double double_value = 4;
-    ///              ArrayValue array_value = 5; KeyValueList kvlist_value = 6 }
-    ///   KeyValue { string key = 1; AnyValue value = 2 }
-    ///   ArrayValue { repeated AnyValue values = 1 }
-    ///   KeyValueList { repeated KeyValue values = 1 }
+    /// Proto field references (OTLP Logs v1):
+    ///
+    /// ExportLogsServiceRequest { repeated ResourceLogs resource_logs = 1 }
+    ///
+    /// ResourceLogs {
+    ///   Resource resource = 1;
+    ///   repeated ScopeLogs scope_logs = 2
+    /// }
+    ///
+    /// Resource {
+    ///   repeated KeyValue attributes = 1;
+    ///   uint32 dropped_attributes_count = 2
+    /// }
+    ///
+    /// ScopeLogs {
+    ///   InstrumentationScope scope = 1;
+    ///   repeated LogRecord log_records = 2
+    /// }
+    ///
+    /// InstrumentationScope {
+    ///   string name = 1
+    /// }
+    ///
+    /// LogRecord {
+    ///   fixed64 time_unix_nano = 1;
+    ///   SeverityNumber severity_number = 2 (enum);
+    ///   string severity_text = 3;
+    ///   AnyValue body = 5;
+    ///   repeated KeyValue attributes = 6;
+    ///   bytes trace_id = 9 (16 bytes);
+    ///   bytes span_id = 10 (8 bytes)
+    /// }
+    ///
+    /// AnyValue {
+    ///   string string_value = 1;
+    ///   bool bool_value = 2;
+    ///   int64 int_value = 3;
+    ///   double double_value = 4;
+    ///   ArrayValue array_value = 5;
+    ///   KeyValueList kvlist_value = 6
+    /// }
+    ///
+    /// KeyValue {
+    ///   string key = 1;
+    ///   AnyValue value = 2
+    /// }
+    ///
+    /// ArrayValue {
+    ///   repeated AnyValue values = 1
+    /// }
+    ///
+    /// KeyValueList {
+    ///   repeated KeyValue values = 1
+    /// }
     /// </remarks>
     public class OtlpProtobufSerializerTests
     {
@@ -71,18 +110,10 @@ namespace NLog.Targets.HttpOTLP.Tests
 
             var output = Serialize(serializer, LogEventInfo.Create(LogLevel.Info, "Logger", "hello"));
 
-            // Top-level message: ExportLogsServiceRequest { repeated ResourceLogs resource_logs = 1 }
-            var topFields = ReadProtobufFields(output);
-            Assert.Single(topFields);
-            var resourceLogsField = topFields[0];
-            Assert.Equal(1, resourceLogsField.FieldNumber);  // resource_logs field
-            Assert.Equal(2, resourceLogsField.WireType);     // length-delimited
+            // ExportLogsServiceRequest → ResourceLogs → ScopeLogs
+            var logRecords = ProtobufParser.GetLogRecords(output);
 
-            // ResourceLogs { Resource resource = 1; repeated ScopeLogs scope_logs = 2 }
-            var rlFields = ReadProtobufFields(resourceLogsField.Data);
-            Assert.Single(rlFields);
-            Assert.Equal(2, rlFields[0].FieldNumber); // scope_logs
-            Assert.Equal(2, rlFields[0].WireType);    // length-delimited
+            Assert.Single(logRecords);
         }
 
         [Fact]
@@ -92,46 +123,65 @@ namespace NLog.Targets.HttpOTLP.Tests
 
             var output = Serialize(serializer, LogEventInfo.Create(LogLevel.Info, "Logger", "msg"));
 
-            var scopeLogs = NavigateToScopeLogs(output);
-            var slFields = ReadProtobufFields(scopeLogs);
+            var scopeLogs = ProtobufParser.GetScopeLogs(output);
+            var slFields = scopeLogs.AsMessage();
 
             // ScopeLogs { InstrumentationScope scope = 1; repeated LogRecord log_records = 2 }
-            Assert.True(slFields.Count >= 2);
-            Assert.Equal(1, slFields[0].FieldNumber); // scope
-            Assert.Equal(2, slFields[0].WireType);
-            Assert.Equal(2, slFields[1].FieldNumber); // log_records
-            Assert.Equal(2, slFields[1].WireType);
+
+            var scopeFields = slFields.FindAll(f => f.FieldNumber == 1);
+            var logRecordFields = slFields.FindAll(f => f.FieldNumber == 2);
+
+            Assert.Single(scopeFields);        // exactly one scope message
+            Assert.NotEmpty(logRecordFields);  // at least one log record
+
+            var scopeField = scopeFields[0];
+            var logRecordField = logRecordFields[0];
+
+            Assert.Equal(2, scopeField.WireType);      // length-delimited
+            Assert.Equal(2, logRecordField.WireType);  // length-delimited
         }
 
         [Fact]
         public void Serialize_InstrumentationScope_ContainsScopeName()
         {
             var serializer = new OtlpProtobufSerializer();
-            var output = Serialize(serializer, LogEventInfo.Create(LogLevel.Info, "Logger", "msg"), scopeName: "MyInstrumentation");
+            var output = Serialize(
+                serializer,
+                LogEventInfo.Create(LogLevel.Info, "Logger", "msg"),
+                scopeName: "MyInstrumentation");
 
-            var scopeLogs = NavigateToScopeLogs(output);
-            var slFields = ReadProtobufFields(scopeLogs);
-            var scopeField = slFields.Find(f => f.FieldNumber == 1);
+            var scopeLogs = ProtobufParser.GetScopeLogs(output);
+            var slFields = scopeLogs.AsMessage();
 
-            // InstrumentationScope { string name = 1 }
-            var scopeFields = ReadProtobufFields(scopeField.Data);
-            var nameField = scopeFields.Find(f => f.FieldNumber == 1);
-            Assert.Equal(2, nameField.WireType);
-            Assert.Equal("MyInstrumentation", Encoding.UTF8.GetString(nameField.Data));
+            var scopeField = slFields.GetField(1);
+            Assert.Equal(2, scopeField.WireType);
+
+            var nameField = scopeField.GetField(1);
+            Assert.Equal("MyInstrumentation", nameField.AsString());
         }
 
         [Fact]
         public void Serialize_EmptyScopeName_OmitsScopeField()
         {
             var serializer = new OtlpProtobufSerializer();
-            var output = Serialize(serializer, LogEventInfo.Create(LogLevel.Info, "Logger", "msg"), scopeName: "");
+            var output = Serialize(
+                serializer,
+                LogEventInfo.Create(LogLevel.Info, "Logger", "msg"),
+                scopeName: "");
 
-            var scopeLogs = NavigateToScopeLogs(output);
-            var slFields = ReadProtobufFields(scopeLogs);
+            var scopeLogs = ProtobufParser.GetScopeLogs(output);
+            var slFields = scopeLogs.AsMessage();
 
-            // Without scope name only log_records (field 2) should be present
-            Assert.DoesNotContain(slFields, f => f.FieldNumber == 1);
-            Assert.Contains(slFields, f => f.FieldNumber == 2);
+            // ScopeLogs should not contain InstrumentationScope (field 1)
+            var scopeFields = slFields.FindAll(f => f.FieldNumber == 1);
+            Assert.Empty(scopeFields);
+
+            // But log_records (field 2) must still be present
+            var logRecordFields = slFields.FindAll(f => f.FieldNumber == 2);
+            Assert.NotEmpty(logRecordFields);
+
+            foreach (var lr in logRecordFields)
+                Assert.Equal(2, lr.WireType); // length-delimited
         }
 
         [Fact]
@@ -147,9 +197,8 @@ namespace NLog.Targets.HttpOTLP.Tests
             };
 
             var output = SerializeAll(serializer, logEvents);
-
-            var topFields = ReadProtobufFields(output);
-            Assert.Equal(3, topFields.FindAll(f => f.FieldNumber == 1).Count);
+            var logRecords = ProtobufParser.GetLogRecords(output);
+            Assert.Equal(3, logRecords.Count);
         }
 
         #endregion
@@ -166,15 +215,11 @@ namespace NLog.Targets.HttpOTLP.Tests
             var serializer = new OtlpProtobufSerializer();
             var output = Serialize(serializer, logEvent);
 
-            var logRecord = NavigateToLogRecord(output);
-            var lrFields = ReadProtobufFields(logRecord);
-            var timestampField = lrFields.Find(f => f.FieldNumber == 1);
+            var logRecord = ProtobufParser.GetLogRecord(output);
+            var timestampField = logRecord.AsMessage().GetField(1);
 
             // time_unix_nano = fixed64 (wire type 1), 8 bytes
-            Assert.Equal(1, timestampField.WireType);
-            Assert.Equal(8, timestampField.Data.Length);
-
-            var encodedNano = BitConverter.ToUInt64(timestampField.Data, 0);
+            var encodedNano = timestampField.AsUInt64();
             var expectedNano = OtlpProtobufSerializer.ToUnixNano(knownTime);
             Assert.Equal(expectedNano, encodedNano);
         }
@@ -186,7 +231,9 @@ namespace NLog.Targets.HttpOTLP.Tests
         [InlineData("Warn", 13)]
         [InlineData("Error", 17)]
         [InlineData("Fatal", 21)]
-        public void Serialize_LogRecord_SeverityNumberMappedCorrectly(string levelName, int expectedSeverityNumber)
+        public void Serialize_LogRecord_SeverityNumberMappedCorrectly(
+            string levelName,
+            int expectedSeverityNumber)
         {
             var level = LogLevel.FromString(levelName);
             var logEvent = LogEventInfo.Create(level, "Logger", "msg");
@@ -194,19 +241,16 @@ namespace NLog.Targets.HttpOTLP.Tests
 
             var output = Serialize(serializer, logEvent);
 
-            var logRecord = NavigateToLogRecord(output);
-            var lrFields = ReadProtobufFields(logRecord);
+            var logRecord = ProtobufParser.GetLogRecord(output);
+            var lrFields = logRecord.AsMessage();
 
-            // severity_number = field 2, varint (wire type 0)
-            var severityNumberField = lrFields.Find(f => f.FieldNumber == 2);
-            Assert.Equal(0, severityNumberField.WireType);
-            var severityNumber = (int)ReadVarintFromBytes(severityNumberField.Data);
-            Assert.Equal(expectedSeverityNumber, severityNumber);
+            // severity_number = field 2 (varint)
+            var severityNumberField = lrFields.GetField(2);
+            Assert.Equal(expectedSeverityNumber, severityNumberField.AsInt64());
 
-            // severity_text = field 3, length-delimited (wire type 2)
-            var severityTextField = lrFields.Find(f => f.FieldNumber == 3);
-            Assert.Equal(2, severityTextField.WireType);
-            Assert.Equal(levelName, Encoding.UTF8.GetString(severityTextField.Data));
+            // severity_text = field 3 (string)
+            var severityTextField = lrFields.GetField(3);
+            Assert.Equal(levelName, severityTextField.AsString());
         }
 
         [Fact]
@@ -217,17 +261,17 @@ namespace NLog.Targets.HttpOTLP.Tests
 
             var output = Serialize(serializer, logEvent);
 
-            var logRecord = NavigateToLogRecord(output);
-            var lrFields = ReadProtobufFields(logRecord);
+            var logRecord = ProtobufParser.GetLogRecord(output);
+            var lrFields = logRecord.AsMessage();
 
-            // body = field 5, AnyValue { string string_value = 1 }
-            var bodyField = lrFields.Find(f => f.FieldNumber == 5);
+            // body = field 5 (AnyValue)
+            var bodyField = lrFields.GetField(5);
             Assert.Equal(2, bodyField.WireType);
 
-            var anyValueFields = ReadProtobufFields(bodyField.Data);
-            Assert.Equal(1, anyValueFields[0].FieldNumber); // string_value
-            Assert.Equal(2, anyValueFields[0].WireType);    // length-delimited
-            Assert.Equal("hello world", Encoding.UTF8.GetString(anyValueFields[0].Data));
+            // AnyValue structure
+            var anyValue = bodyField.AsMessage();
+            var stringValueField = anyValue.GetField(1);
+            Assert.Equal("hello world", stringValueField.AsString());
         }
 
         [Fact]
@@ -238,8 +282,8 @@ namespace NLog.Targets.HttpOTLP.Tests
 
             var output = Serialize(serializer, logEvent);
 
-            var logRecord = NavigateToLogRecord(output);
-            var lrFields = ReadProtobufFields(logRecord);
+            var logRecord = ProtobufParser.GetLogRecord(output);
+            var lrFields = logRecord.AsMessage();
 
             // body (field 5) should not be present when the rendered body is empty
             Assert.DoesNotContain(lrFields, f => f.FieldNumber == 5);
@@ -253,12 +297,11 @@ namespace NLog.Targets.HttpOTLP.Tests
 
             var output = Serialize(serializer, logEvent);
 
-            var attributes = GetLogRecordAttributes(output);
-            Assert.True(attributes.TryGetValue("LoggerName", out var loggerNameValue));
+            var attributes = ProtobufParser.GetLogRecordAttributes(output);
+            Assert.True(attributes.TryGetValue("logger.name", out var loggerNameValue));
 
-            var anyValue = ReadProtobufFields(loggerNameValue.Data);
-            Assert.Equal(1, anyValue[0].FieldNumber); // string_value
-            Assert.Equal("MyApp.Service", Encoding.UTF8.GetString(anyValue[0].Data));
+            var stringValue = loggerNameValue.GetField(1).AsString();
+            Assert.Equal("MyApp.Service", stringValue);
         }
 
         [Fact]
@@ -270,19 +313,19 @@ namespace NLog.Targets.HttpOTLP.Tests
 
             var output = Serialize(serializer, logEvent);
 
-            var attributes = GetLogRecordAttributes(output);
+            var attributes = ProtobufParser.GetLogRecordAttributes(output);
 
             Assert.True(attributes.ContainsKey("exception.type"));
-            var typeAnyValue = ReadProtobufFields(attributes["exception.type"].Data);
-            Assert.Contains("InvalidOperationException", Encoding.UTF8.GetString(typeAnyValue[0].Data));
+            var typeAnyValue = attributes["exception.type"].GetField(1);
+            Assert.Contains("InvalidOperationException", typeAnyValue.AsString());
 
             Assert.True(attributes.ContainsKey("exception.message"));
-            var msgAnyValue = ReadProtobufFields(attributes["exception.message"].Data);
-            Assert.Equal("something went wrong", Encoding.UTF8.GetString(msgAnyValue[0].Data));
+            var messageAnyValue = attributes["exception.message"].GetField(1);
+            Assert.Equal("something went wrong", messageAnyValue.AsString());
 
             Assert.True(attributes.ContainsKey("exception.stacktrace"));
-            var stackAnyValue = ReadProtobufFields(attributes["exception.stacktrace"].Data);
-            Assert.Contains("InvalidOperationException", Encoding.UTF8.GetString(stackAnyValue[0].Data));
+            var stackAnyValue = attributes["exception.stacktrace"].GetField(1);
+            Assert.Contains("InvalidOperationException", stackAnyValue.AsString());
         }
 
         [Fact]
@@ -294,10 +337,11 @@ namespace NLog.Targets.HttpOTLP.Tests
 
             var output = Serialize(serializer, logEvent);
 
-            var attributes = GetLogRecordAttributes(output);
+            var attributes = ProtobufParser.GetLogRecordAttributes(output);
             Assert.True(attributes.ContainsKey("MyKey"));
-            var anyValue = ReadProtobufFields(attributes["MyKey"].Data);
-            Assert.Equal("MyValue", Encoding.UTF8.GetString(anyValue[0].Data));
+
+            var value = attributes["MyKey"].GetField(1);
+            Assert.Equal("MyValue", value.AsString());
         }
 
         [Fact]
@@ -312,8 +356,8 @@ namespace NLog.Targets.HttpOTLP.Tests
 
             var output = Serialize(serializer, logEvent);
 
-            var logRecord = NavigateToLogRecord(output);
-            var lrFields = ReadProtobufFields(logRecord);
+            var logRecord = ProtobufParser.GetLogRecord(output);
+            var lrFields = logRecord.AsMessage();
 
             // trace_id = field 9, bytes (wire type 2), exactly 16 bytes
             var traceIdField = lrFields.Find(f => f.FieldNumber == 9);
@@ -334,8 +378,8 @@ namespace NLog.Targets.HttpOTLP.Tests
 
             var output = Serialize(serializer, logEvent);
 
-            var logRecord = NavigateToLogRecord(output);
-            var lrFields = ReadProtobufFields(logRecord);
+            var logRecord = ProtobufParser.GetLogRecord(output);
+            var lrFields = logRecord.AsMessage();
 
             // span_id = field 10, bytes (wire type 2), exactly 8 bytes
             var spanIdField = lrFields.Find(f => f.FieldNumber == 10);
@@ -356,8 +400,8 @@ namespace NLog.Targets.HttpOTLP.Tests
 
             var output = Serialize(serializer, logEvent);
 
-            var logRecord = NavigateToLogRecord(output);
-            var lrFields = ReadProtobufFields(logRecord);
+            var logRecord = ProtobufParser.GetLogRecord(output);
+            var lrFields = logRecord.AsMessage();
 
             Assert.DoesNotContain(lrFields, f => f.FieldNumber == 9);
             Assert.DoesNotContain(lrFields, f => f.FieldNumber == 10);
@@ -379,14 +423,9 @@ namespace NLog.Targets.HttpOTLP.Tests
 
             var output = Serialize(serializer, LogEventInfo.Create(LogLevel.Info, "Logger", "msg"), resourceAttributes);
 
-            var resourceAttrs = GetResourceAttributes(output);
-            Assert.True(resourceAttrs.ContainsKey("deployment.environment"));
-            var envAnyValue = ReadProtobufFields(resourceAttrs["deployment.environment"].Data);
-            Assert.Equal("production", Encoding.UTF8.GetString(envAnyValue[0].Data));
-
-            Assert.True(resourceAttrs.ContainsKey("host.name"));
-            var hostAnyValue = ReadProtobufFields(resourceAttrs["host.name"].Data);
-            Assert.Equal("server01", Encoding.UTF8.GetString(hostAnyValue[0].Data));
+            var resourceAttrs = ProtobufParser.GetResourceAttributes(output);
+            Assert.Equal("production", resourceAttrs["deployment.environment"].AsAnyValueString());
+            Assert.Equal("server01", resourceAttrs["host.name"].AsAnyValueString());
         }
 
         [Fact]
@@ -405,7 +444,7 @@ namespace NLog.Targets.HttpOTLP.Tests
 
             var output = Serialize(serializer, LogEventInfo.Create(LogLevel.Info, "Logger", "msg"), resourceAttributes);
 
-            var resourceAttrs = GetResourceAttributes(output);
+            var resourceAttrs = ProtobufParser.GetResourceAttributes(output);
             Assert.True(resourceAttrs.ContainsKey("forced.attr"));
         }
 
@@ -417,106 +456,102 @@ namespace NLog.Targets.HttpOTLP.Tests
         public void AnyValue_Bool_True_EncodedAsVarintField2Value1()
         {
             var output = SerializeWithProperty("flag", true);
-            var anyValue = GetPropertyAnyValue(output, "flag");
-
-            // AnyValue { bool bool_value = 2 } → field 2, wire type 0 (varint), value 1
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValue = logRecordAttributes["flag"].AsAnyValue();
             Assert.Equal(2, anyValue.FieldNumber);
-            Assert.Equal(0, anyValue.WireType);
-            Assert.Equal(1UL, ReadVarintFromBytes(anyValue.Data));
+            Assert.Equal(1, anyValue.AsInt64());
         }
 
         [Fact]
         public void AnyValue_Bool_False_EncodedAsVarintField2Value0()
         {
             var output = SerializeWithProperty("flag", false);
-            var anyValue = GetPropertyAnyValue(output, "flag");
-
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValue = logRecordAttributes["flag"].AsAnyValue();
             Assert.Equal(2, anyValue.FieldNumber);
-            Assert.Equal(0, anyValue.WireType);
-            Assert.Equal(0UL, ReadVarintFromBytes(anyValue.Data));
+            Assert.Equal(0, anyValue.AsInt64());
         }
 
         [Fact]
         public void AnyValue_Int32_EncodedAsVarintField3()
         {
             var output = SerializeWithProperty("count", 42);
-            var anyValue = GetPropertyAnyValue(output, "count");
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValue = logRecordAttributes["count"].AsAnyValue();
 
             // AnyValue { int64 int_value = 3 } → field 3, wire type 0 (varint)
             Assert.Equal(3, anyValue.FieldNumber);
-            Assert.Equal(0, anyValue.WireType);
-            Assert.Equal(42UL, ReadVarintFromBytes(anyValue.Data));
+            Assert.Equal(42, anyValue.AsInt64());
         }
 
         [Fact]
         public void AnyValue_NegativeInt_EncodedAsVarintField3WithZigzagTwosComplement()
         {
             var output = SerializeWithProperty("neg", -1);
-            var anyValue = GetPropertyAnyValue(output, "neg");
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValue = logRecordAttributes["neg"].AsAnyValue();
 
             // Negative values use two's complement encoding (int64 → ulong cast)
             Assert.Equal(3, anyValue.FieldNumber);
-            Assert.Equal(0, anyValue.WireType);
-            var raw = ReadVarintFromBytes(anyValue.Data);
-            Assert.Equal(-1L, unchecked((long)raw));
+            Assert.Equal(-1, anyValue.AsInt64());
         }
 
         [Fact]
         public void AnyValue_UInt64_EncodedAsVarintField3()
         {
             var output = SerializeWithProperty("big", ulong.MaxValue);
-            var anyValue = GetPropertyAnyValue(output, "big");
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValue = logRecordAttributes["big"].AsAnyValue();
 
             Assert.Equal(3, anyValue.FieldNumber);
-            Assert.Equal(0, anyValue.WireType);
-            Assert.Equal(ulong.MaxValue, ReadVarintFromBytes(anyValue.Data));
+            Assert.Equal(ulong.MaxValue, (ulong)anyValue.AsInt64());
         }
 
         [Fact]
         public void AnyValue_Double_EncodedAsFixed64Field4()
         {
             var output = SerializeWithProperty("ratio", 3.14);
-            var anyValue = GetPropertyAnyValue(output, "ratio");
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValue = logRecordAttributes["ratio"].AsAnyValue();
 
             // AnyValue { double double_value = 4 } → field 4, wire type 1 (fixed64)
             Assert.Equal(4, anyValue.FieldNumber);
-            Assert.Equal(1, anyValue.WireType);
-            Assert.Equal(8, anyValue.Data.Length);
-            Assert.Equal(3.14, BitConverter.ToDouble(anyValue.Data, 0), precision: 10);
+            Assert.Equal(3.14, anyValue.AsDouble(), precision: 10);
         }
 
         [Fact]
         public void AnyValue_Float_EncodedAsFixed64Field4()
         {
             var output = SerializeWithProperty("f", 1.5f);
-            var anyValue = GetPropertyAnyValue(output, "f");
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValue = logRecordAttributes["f"].AsAnyValue();
 
             Assert.Equal(4, anyValue.FieldNumber);
-            Assert.Equal(1, anyValue.WireType);
+            Assert.Equal(1.5f, anyValue.AsDouble());
         }
 
         [Fact]
         public void AnyValue_String_EncodedAsLengthDelimitedField1()
         {
             var output = SerializeWithProperty("msg", "hello");
-            var anyValue = GetPropertyAnyValue(output, "msg");
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValue = logRecordAttributes["msg"].AsAnyValue();
 
             // AnyValue { string string_value = 1 } → field 1, wire type 2 (length-delimited)
             Assert.Equal(1, anyValue.FieldNumber);
-            Assert.Equal(2, anyValue.WireType);
-            Assert.Equal("hello", Encoding.UTF8.GetString(anyValue.Data));
+            Assert.Equal("hello", anyValue.AsString());
         }
 
         [Fact]
         public void AnyValue_Enum_EncodedAsStringField1()
         {
             var output = SerializeWithProperty("level", System.Diagnostics.TraceEventType.Warning);
-            var anyValue = GetPropertyAnyValue(output, "level");
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValue = logRecordAttributes["level"].AsAnyValue();
 
             // Enums are serialized as their name string
             Assert.Equal(1, anyValue.FieldNumber);
-            Assert.Equal(2, anyValue.WireType);
-            Assert.Equal("Warning", Encoding.UTF8.GetString(anyValue.Data));
+            Assert.Equal("Warning", anyValue.AsString());
         }
 
         [Fact]
@@ -524,35 +559,33 @@ namespace NLog.Targets.HttpOTLP.Tests
         {
             var dt = new DateTime(2024, 1, 15, 10, 30, 0, DateTimeKind.Utc);
             var output = SerializeWithProperty("ts", dt);
-            var anyValue = GetPropertyAnyValue(output, "ts");
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValue = logRecordAttributes["ts"].AsAnyValue();
 
             Assert.Equal(1, anyValue.FieldNumber);
-            Assert.Equal(2, anyValue.WireType);
-            var str = Encoding.UTF8.GetString(anyValue.Data);
-            Assert.Contains("2024-01-15", str);
+            Assert.Contains("2024-01-15", anyValue.AsString());
         }
 
         [Fact]
         public void AnyValue_DoubleNaN_EncodedAsFixed64Field4()
         {
             var output = SerializeWithProperty("nan", double.NaN);
-            var anyValue = GetPropertyAnyValue(output, "nan");
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValue = logRecordAttributes["nan"].AsAnyValue();
 
             Assert.Equal(4, anyValue.FieldNumber);
-            Assert.Equal(1, anyValue.WireType);
-            Assert.Equal(8, anyValue.Data.Length);
-            Assert.True(double.IsNaN(BitConverter.ToDouble(anyValue.Data, 0)));
+            Assert.True(double.IsNaN(anyValue.AsDouble()));
         }
 
         [Fact]
         public void AnyValue_DoublePositiveInfinity_EncodedAsFixed64Field4()
         {
             var output = SerializeWithProperty("inf", double.PositiveInfinity);
-            var anyValue = GetPropertyAnyValue(output, "inf");
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValue = logRecordAttributes["inf"].AsAnyValue();
 
             Assert.Equal(4, anyValue.FieldNumber);
-            Assert.Equal(1, anyValue.WireType);
-            Assert.True(double.IsPositiveInfinity(BitConverter.ToDouble(anyValue.Data, 0)));
+            Assert.True(double.IsPositiveInfinity(anyValue.AsDouble()));
         }
 
         [Fact]
@@ -560,32 +593,15 @@ namespace NLog.Targets.HttpOTLP.Tests
         {
             var list = new List<object> { "alpha", 99, true };
             var output = SerializeWithProperty("items", list);
-            var anyValueWrapper = GetPropertyAnyValueWrapper(output, "items");
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValueWrapper = logRecordAttributes["items"];
+            var array = anyValueWrapper.AsArrayValue();
 
-            // AnyValue { ArrayValue array_value = 5 } → field 5, wire type 2
-            var wrapperFields = ReadProtobufFields(anyValueWrapper.Data);
-            var arrayField = wrapperFields.Find(f => f.FieldNumber == 5);
-            Assert.Equal(2, arrayField.WireType);
+            Assert.Equal(3, array.Count);
 
-            // ArrayValue { repeated AnyValue values = 1 }
-            var arrayEntries = ReadProtobufFields(arrayField.Data);
-            Assert.Equal(3, arrayEntries.Count);
-            Assert.All(arrayEntries, e => Assert.Equal(1, e.FieldNumber));
-
-            // "alpha" → string_value (field 1)
-            var elem0 = ReadProtobufFields(arrayEntries[0].Data);
-            Assert.Equal(1, elem0[0].FieldNumber);
-            Assert.Equal("alpha", Encoding.UTF8.GetString(elem0[0].Data));
-
-            // 99 → int_value (field 3)
-            var elem1 = ReadProtobufFields(arrayEntries[1].Data);
-            Assert.Equal(3, elem1[0].FieldNumber);
-            Assert.Equal(99UL, ReadVarintFromBytes(elem1[0].Data));
-
-            // true → bool_value (field 2)
-            var elem2 = ReadProtobufFields(arrayEntries[2].Data);
-            Assert.Equal(2, elem2[0].FieldNumber);
-            Assert.Equal(1UL, ReadVarintFromBytes(elem2[0].Data));
+            Assert.Equal("alpha", array[0].GetField(1).AsString());
+            Assert.Equal(99L, array[1].GetField(3).AsInt64());
+            Assert.Equal(1L, array[2].GetField(2).AsInt64());
         }
 
         [Fact]
@@ -597,34 +613,13 @@ namespace NLog.Targets.HttpOTLP.Tests
                 ["key2"] = 42,
             };
             var output = SerializeWithProperty("map", dict);
-            var anyValueWrapper = GetPropertyAnyValueWrapper(output, "map");
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValueWrapper = logRecordAttributes["map"];
 
             // AnyValue { KeyValueList kvlist_value = 6 } → field 6, wire type 2
-            var wrapperFields = ReadProtobufFields(anyValueWrapper.Data);
-            var kvListField = wrapperFields.Find(f => f.FieldNumber == 6);
-            Assert.Equal(2, kvListField.WireType);
-
-            // KeyValueList { repeated KeyValue values = 1 }
-            var kvEntries = ReadProtobufFields(kvListField.Data);
-            Assert.Equal(2, kvEntries.Count);
-
-            var parsed = new Dictionary<string, ProtobufField>();
-            foreach (var entry in kvEntries)
-            {
-                var entryFields = ReadProtobufFields(entry.Data);
-                var key = Encoding.UTF8.GetString(entryFields.Find(f => f.FieldNumber == 1).Data);
-                parsed[key] = entryFields.Find(f => f.FieldNumber == 2);
-            }
-
-            // key1 → string_value
-            var key1AnyValue = ReadProtobufFields(parsed["key1"].Data);
-            Assert.Equal(1, key1AnyValue[0].FieldNumber);
-            Assert.Equal("value1", Encoding.UTF8.GetString(key1AnyValue[0].Data));
-
-            // key2 → int_value
-            var key2AnyValue = ReadProtobufFields(parsed["key2"].Data);
-            Assert.Equal(3, key2AnyValue[0].FieldNumber);
-            Assert.Equal(42UL, ReadVarintFromBytes(key2AnyValue[0].Data));
+            var map = anyValueWrapper.GetField(6).AsMessage().GetFieldValues(1); // KeyValueList { repeated KeyValue values = 1 }
+            Assert.Equal("value1", map["key1"].GetField(1).AsString());
+            Assert.Equal(42L, map["key2"].GetField(3).AsInt64());
         }
 
         [Fact]
@@ -637,38 +632,22 @@ namespace NLog.Targets.HttpOTLP.Tests
             };
 
             var output = SerializeWithProperty("map", dict);
-            var anyValueWrapper = GetPropertyAnyValueWrapper(output, "map");
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValueWrapper = logRecordAttributes["map"];
 
-            // AnyValue { KeyValueList kvlist_value = 6 } → field 6, wire type 2
-            var wrapperFields = ReadProtobufFields(anyValueWrapper.Data);
-            var kvListField = wrapperFields.Find(f => f.FieldNumber == 6);
-            Assert.Equal(2, kvListField.WireType);
+            // LogRecord.attributes → KeyValue.value (AnyValue)
+            // AnyValue.kvlist_value = 6 (map encoded as KeyValueList)
+            var map = anyValueWrapper.GetField(6).AsMessage().GetFieldValues(1); // KeyValueList { repeated KeyValue values = 1 }
 
-            // KeyValueList { repeated KeyValue values = 1 }
-            var kvEntries = ReadProtobufFields(kvListField.Data);
-            Assert.Equal(2, kvEntries.Count);
+            // key1 → AnyValue.string_value = 1
+            Assert.Equal("value1", map["key1"].GetField(1).AsString());
 
-            var parsed = new Dictionary<string, ProtobufField>();
-            foreach (var entry in kvEntries)
-            {
-                var entryFields = ReadProtobufFields(entry.Data);
-                var key = Encoding.UTF8.GetString(entryFields.Find(f => f.FieldNumber == 1).Data);
-                parsed[key] = entryFields.Find(f => f.FieldNumber == 2);
-            }
+            // key2 → AnyValue.array_value = 5
+            // ArrayValue contains repeated AnyValue elements (field 1)
+            var arrayEntries = map["key2"].AsArrayValue();
 
-            // key1 → string_value
-            var key1AnyValue = ReadProtobufFields(parsed["key1"].Data);
-            Assert.Equal(1, key1AnyValue[0].FieldNumber);
-            Assert.Equal("value1", Encoding.UTF8.GetString(key1AnyValue[0].Data));
-
-            // key2 → ArrayValue { ArrayValue array_value = 5 } → field 5, wire type 2
-            var key2AnyValue = ReadProtobufFields(parsed["key2"].Data);
-            var arrayField = key2AnyValue.Find(f => f.FieldNumber == 5);
-            Assert.Equal(2, arrayField.WireType);
-
-            // ArrayValue { repeated AnyValue values = 1 }
-            var arrayEntries = ReadProtobufFields(arrayField.Data);
             Assert.Equal(3, arrayEntries.Count);
+            // ArrayValue { repeated AnyValue values = 1 }
             Assert.All(arrayEntries, e => Assert.Equal(1, e.FieldNumber));
         }
 
@@ -677,27 +656,17 @@ namespace NLog.Targets.HttpOTLP.Tests
         {
             var output = SerializeWithProperty("n", (object)null);
 
-            // null is converted to empty string → WriteStringField skips it → AnyValue is omitted.
-            // The KeyValue attribute is still written (key = "n") but carries no value submessage.
-            var logRecord = NavigateToLogRecord(output);
-            var lrFields = ReadProtobufFields(logRecord);
-            var attributeFields = lrFields.FindAll(f => f.FieldNumber == 6);
+            var logRecord = ProtobufParser.GetLogRecord(output);
+            var lrFields = logRecord.AsMessage();
 
-            // Find the KeyValue whose key is "n"
-            var found = false;
-            foreach (var kv in attributeFields)
-            {
-                var kvFields = ReadProtobufFields(kv.Data);
-                var keyField = kvFields.Find(f => f.FieldNumber == 1);
-                if (keyField.Data != null && Encoding.UTF8.GetString(keyField.Data) == "n")
-                {
-                    found = true;
-                    // No value field (field 2) should be present
-                    Assert.DoesNotContain(kvFields, f => f.FieldNumber == 2);
-                    break;
-                }
-            }
-            Assert.True(found, "Attribute 'n' should be present in the log record");
+            var attributes = lrFields.GetFieldValues(6);
+
+            Assert.True(attributes.ContainsKey("n"));
+
+            // KeyValue exists, but value (field 2 inside AnyValue) should NOT exist
+            var valueField = attributes["n"];
+            Assert.Equal(0, valueField.FieldNumber);
+            Assert.Null(valueField.Data);
         }
 
         #endregion
@@ -709,8 +678,9 @@ namespace NLog.Targets.HttpOTLP.Tests
             var output = new MemoryStream();
             using (var builder = serializer.BeginRecord(output))
             {
-                var logProperties = logEvent.HasProperties ? logEvent.Properties.ToDictionary(d => d.Key.ToString(), d => d.Value) : null;
-                builder.AddScopeLogs(scopeName, logEvent, logEvent.FormattedMessage, logProperties);
+                builder.BeginScope(scopeName);
+                var logProperties = logEvent.HasProperties ? logEvent.Properties : null;
+                builder.AddLogRecord(logEvent, logEvent.FormattedMessage, logProperties);
             }
             return output.ToArray();
         }
@@ -723,8 +693,9 @@ namespace NLog.Targets.HttpOTLP.Tests
                 for (int i = 0; i < resourceAttributes.Count; i++)
                     builder.AddResourceAttribute(resourceAttributes[i].Name, resourceAttributes[i].Layout?.Render(logEvent));
 
-                var logProperties = logEvent.HasProperties ? logEvent.Properties.ToDictionary(d => d.Key.ToString(), d => d.Value) : null;
-                builder.AddScopeLogs(scopeName, logEvent, logEvent.FormattedMessage, logProperties);
+                builder.BeginScope(scopeName);
+                var logProperties = logEvent.HasProperties ? logEvent.Properties : null;
+                builder.AddLogRecord(logEvent, logEvent.FormattedMessage, logProperties);
             }
             return output.ToArray();
         }
@@ -732,12 +703,13 @@ namespace NLog.Targets.HttpOTLP.Tests
         private static byte[] SerializeAll(OtlpProtobufSerializer serializer, IList<LogEventInfo> logEvents, string scopeName = "NLog")
         {
             var output = new MemoryStream();
-            for (int i = 0; i < logEvents.Count; i++)
+            using (var builder = serializer.BeginRecord(output))
             {
-                using (var builder = serializer.BeginRecord(output))
+                builder.BeginScope(scopeName);
+                for (int i = 0; i < logEvents.Count; i++)
                 {
-                    var logProperties = logEvents[i].HasProperties ? logEvents[i].Properties.ToDictionary(d => d.Key.ToString(), d => d.Value) : null;
-                    builder.AddScopeLogs(scopeName, logEvents[i], logEvents[i].FormattedMessage, logProperties);
+                    var logProperties = logEvents[i].HasProperties ? logEvents[i].Properties : null;
+                    builder.AddLogRecord(logEvents[i], logEvents[i].FormattedMessage, logProperties);
                 }
             }
             return output.ToArray();
@@ -755,71 +727,6 @@ namespace NLog.Targets.HttpOTLP.Tests
 
         #region Protobuf navigation helpers
 
-        private static byte[] NavigateToScopeLogs(byte[] data)
-        {
-            var topFields = ReadProtobufFields(data);
-            var resourceLogs = ReadProtobufFields(topFields.Find(f => f.FieldNumber == 1).Data);
-            return resourceLogs.Find(f => f.FieldNumber == 2).Data;
-        }
-
-        private static byte[] NavigateToLogRecord(byte[] data)
-        {
-            var scopeLogs = NavigateToScopeLogs(data);
-            var slFields = ReadProtobufFields(scopeLogs);
-            return slFields.Find(f => f.FieldNumber == 2).Data;
-        }
-
-        private static Dictionary<string, ProtobufField> GetLogRecordAttributes(byte[] data)
-        {
-            var logRecord = NavigateToLogRecord(data);
-            var lrFields = ReadProtobufFields(logRecord);
-            var attributeFields = lrFields.FindAll(f => f.FieldNumber == 6);
-            return ParseKeyValueFields(attributeFields);
-        }
-
-        private static Dictionary<string, ProtobufField> GetResourceAttributes(byte[] data)
-        {
-            var topFields = ReadProtobufFields(data);
-            var resourceLogs = ReadProtobufFields(topFields.Find(f => f.FieldNumber == 1).Data);
-            var resource = ReadProtobufFields(resourceLogs.Find(f => f.FieldNumber == 1).Data);
-            var attributeFields = resource.FindAll(f => f.FieldNumber == 1);
-            return ParseKeyValueFields(attributeFields);
-        }
-
-        private static Dictionary<string, ProtobufField> ParseKeyValueFields(List<ProtobufField> keyValueFields)
-        {
-            var result = new Dictionary<string, ProtobufField>();
-            foreach (var kv in keyValueFields)
-            {
-                var fields = ReadProtobufFields(kv.Data);
-                var keyField = fields.Find(f => f.FieldNumber == 1);
-                var valueField = fields.Find(f => f.FieldNumber == 2);
-                if (keyField.Data?.Length > 0)
-                    result[Encoding.UTF8.GetString(keyField.Data)] = valueField;
-            }
-            return result;
-        }
-
-        /// <summary>
-        /// Returns the decoded inner AnyValue field (e.g. string_value=1, int_value=3) for an event property.
-        /// </summary>
-        private static ProtobufField GetPropertyAnyValue(byte[] data, string propertyKey)
-        {
-            var wrapper = GetPropertyAnyValueWrapper(data, propertyKey);
-            var anyValueFields = ReadProtobufFields(wrapper.Data);
-            return anyValueFields[0];
-        }
-
-        /// <summary>
-        /// Returns the raw AnyValue submessage field (field 2 of the KeyValue) for an event property.
-        /// </summary>
-        private static ProtobufField GetPropertyAnyValueWrapper(byte[] data, string propertyKey)
-        {
-            var attrs = GetLogRecordAttributes(data);
-            Assert.True(attrs.TryGetValue(propertyKey, out var wrapper), $"Property '{propertyKey}' not found in log record attributes");
-            return wrapper;
-        }
-
         private static string ToHex(byte[] bytes)
         {
             return BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();
@@ -829,78 +736,11 @@ namespace NLog.Targets.HttpOTLP.Tests
 
         #region Protobuf reader helpers
 
-        private struct ProtobufField
-        {
-            public int FieldNumber;
-            public int WireType;
-            public byte[] Data;
-        }
 
-        private static List<ProtobufField> ReadProtobufFields(byte[] data)
-        {
-            var fields = new List<ProtobufField>();
-            int offset = 0;
-            while (offset < data.Length)
-            {
-                var tag = ReadVarint(data, ref offset);
-                var fieldNumber = (int)(tag >> 3);
-                var wireType = (int)(tag & 0x7);
 
-                byte[] fieldData;
-                switch (wireType)
-                {
-                    case 0: // varint
-                        var start = offset;
-                        ReadVarint(data, ref offset);
-                        fieldData = new byte[offset - start];
-                        Array.Copy(data, start, fieldData, 0, fieldData.Length);
-                        break;
-                    case 1: // 64-bit fixed
-                        fieldData = new byte[8];
-                        Array.Copy(data, offset, fieldData, 0, 8);
-                        offset += 8;
-                        break;
-                    case 2: // length-delimited
-                        var length = (int)ReadVarint(data, ref offset);
-                        fieldData = new byte[length];
-                        Array.Copy(data, offset, fieldData, 0, length);
-                        offset += length;
-                        break;
-                    case 5: // 32-bit fixed
-                        fieldData = new byte[4];
-                        Array.Copy(data, offset, fieldData, 0, 4);
-                        offset += 4;
-                        break;
-                    default:
-                        throw new InvalidOperationException($"Unknown protobuf wire type {wireType} at offset {offset}");
-                }
 
-                fields.Add(new ProtobufField { FieldNumber = fieldNumber, WireType = wireType, Data = fieldData });
-            }
-            return fields;
-        }
-
-        private static ulong ReadVarint(byte[] data, ref int offset)
-        {
-            ulong value = 0;
-            int shift = 0;
-            while (offset < data.Length)
-            {
-                var b = data[offset++];
-                value |= (ulong)(b & 0x7F) << shift;
-                if ((b & 0x80) == 0)
-                    break;
-                shift += 7;
-            }
-            return value;
-        }
-
-        private static ulong ReadVarintFromBytes(byte[] data)
-        {
-            int offset = 0;
-            return ReadVarint(data, ref offset);
-        }
 
         #endregion
     }
+
 }
