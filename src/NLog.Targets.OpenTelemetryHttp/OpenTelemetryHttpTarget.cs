@@ -69,8 +69,9 @@ namespace NLog.Targets
     public class OpenTelemetryHttpTarget : HttpClientTarget
     {
         private static readonly SimpleLayout _defaultServiceName = new SimpleLayout("${appdomain:format=Friendly}");
+        private static readonly SimpleLayout _defaultServiceVersion = new SimpleLayout("${assembly-version:Default=}");
+        private static readonly SimpleLayout _defaultHostName = new SimpleLayout("${hostname}");
         private static readonly Layout _defaultOperatingSystem = Layout.FromMethod(static evt => ResolveOperatingSystem(), LayoutRenderOptions.ThreadAgnostic);
-        private static readonly SimpleLayout _defaultProcessId = new SimpleLayout("${processid}");
 
         private static readonly string EmptyTraceIdToHexString = default(System.Diagnostics.ActivityTraceId).ToHexString();
         private static readonly string EmptySpanIdToHexString = default(System.Diagnostics.ActivitySpanId).ToHexString();
@@ -87,12 +88,12 @@ namespace NLog.Targets
         public OpenTelemetryHttpTarget()
         {
             ContentType = "application/x-protobuf"; // application/json not supported, only protobuf as OTLP_PROTOCOL
-            IncludeEventProperties = true;
             BatchSize = 200;                // Consider doubling this if enabling compression
             TaskDelayMilliseconds = 50;     // Small delay to improve chance of batching and reducing number of HTTP requests.
-            RetryDelayMilliseconds = 2500;  // Notice OTel SDK initial backoff is 5 secs
+            RetryDelayMilliseconds = 5000;  // Notice OTel SDK initial backoff is 5 secs
             RetryCount = 3;                 // Notice OTel SDK default max 5 retries
             Layout = "${message}";
+            IncludeEventProperties = true;
         }
 
         /// <summary>
@@ -105,13 +106,13 @@ namespace NLog.Targets
         /// Gets or sets the OTLP resource <c>service.version</c> attribute value.
         /// </summary>
         /// <remarks>Default: <c>${assembly-version:Default=}</c>.</remarks>
-        public Layout ServiceVersion { get; set; } = "${assembly-version:Default=}";
+        public Layout ServiceVersion { get; set; } = _defaultServiceVersion;
 
         /// <summary>
         /// Gets or sets the OTLP resource <c>host.name</c> attribute value.
         /// </summary>
         /// <remarks>Default: <c>${hostname}</c>.</remarks>
-        public Layout HostName { get; set; } = "${hostname}";
+        public Layout HostName { get; set; } = _defaultHostName;
 
         /// <summary>
         /// Gets or sets the OpenTelemetry instrumentation scope name.
@@ -271,13 +272,21 @@ namespace NLog.Targets
             }
         }
 
-        IEnumerable<KeyValuePair<string, string>> GetResourceAttributes(LogEventInfo firstEvent)
+        IEnumerable<KeyValuePair<string, object>> GetResourceAttributes(LogEventInfo firstEvent)
         {
             Layout? serviceNameLayout = ServiceName;
             Layout? serviceVersionLayout = ServiceVersion;
             Layout? hostNameLayout = HostName;
             Layout? operatingSystemLayout = _defaultOperatingSystem;
-            Layout? processIdLayout = _defaultProcessId;
+            int? processId =
+#if NET
+                Environment.ProcessId;
+#else
+                System.Diagnostics.Process.GetCurrentProcess().Id;
+#endif
+            string telemetrySdkLanguage = "dotnet";
+            string telemetrySdkName = typeof(OpenTelemetryHttpTarget).ToString();
+            string telemetrySdkVersion = typeof(OpenTelemetryHttpTarget).Assembly.GetName().Version?.ToString() ?? string.Empty;
 
             for (int j = 0; j < ResourceAttributes.Count; ++j)
             {
@@ -285,21 +294,34 @@ namespace NLog.Targets
                 if (string.IsNullOrWhiteSpace(attr.Name))
                     continue;
 
-                var value = RenderLogEvent(attr.Layout, firstEvent);
-                if (!attr.IncludeEmptyValue && string.IsNullOrWhiteSpace(value))
+                var stringValue = RenderLogEvent(attr.Layout, firstEvent);
+                if (!attr.IncludeEmptyValue && string.IsNullOrWhiteSpace(stringValue))
                     continue;
+
+                object value = stringValue;
 
                 if (attr.Name == "service.name")
                     serviceNameLayout = null;
                 else if (attr.Name == "service.version")
                     serviceVersionLayout = null;
+                else if (attr.Name == "process.id")
+                {
+                    processId = null;
+                    if (long.TryParse(stringValue, out var parsedProcessId))
+                        value = parsedProcessId;
+                }
                 else if (attr.Name == "host.name")
                     hostNameLayout = null;
                 else if (attr.Name == "os.type")
                     operatingSystemLayout = null;
-                else if (attr.Name == "process.id")
-                    processIdLayout = null;
-                yield return new KeyValuePair<string, string>(attr.Name, value);
+                else if (attr.Name == "telemetry.sdk.language")
+                    telemetrySdkLanguage = string.Empty;
+                else if (attr.Name == "telemetry.sdk.name")
+                    telemetrySdkName = string.Empty;
+                else if (attr.Name == "telemetry.sdk.version")
+                    telemetrySdkVersion = string.Empty;
+
+                yield return new KeyValuePair<string, object>(attr.Name, value);
             }
 
             if (serviceNameLayout != null)
@@ -307,32 +329,36 @@ namespace NLog.Targets
                 var serviceName = RenderLogEvent(serviceNameLayout, firstEvent);
                 if (string.IsNullOrEmpty(serviceName))
                     serviceName = "Unknown";
-                yield return new KeyValuePair<string, string>("service.name", serviceName);
+                yield return new KeyValuePair<string, object>("service.name", serviceName);
             }
             if (serviceVersionLayout != null)
             {
                 var serviceVersion = RenderLogEvent(serviceVersionLayout, firstEvent);
                 if (!string.IsNullOrEmpty(serviceVersion))
-                    yield return new KeyValuePair<string, string>("service.version", serviceVersion);
+                    yield return new KeyValuePair<string, object>("service.version", serviceVersion);
             }
-            if (processIdLayout != null)
+            if (processId.HasValue)
             {
-                var processId = RenderLogEvent(processIdLayout, firstEvent);
-                if (!string.IsNullOrEmpty(processId))
-                    yield return new KeyValuePair<string, string>("process.id", processId);
+                yield return new KeyValuePair<string, object>("process.id", processId.Value);
             }
             if (hostNameLayout != null)
             {
                 var hostName = RenderLogEvent(hostNameLayout, firstEvent);
                 if (!string.IsNullOrEmpty(hostName))
-                    yield return new KeyValuePair<string, string>("host.name", hostName);
+                    yield return new KeyValuePair<string, object>("host.name", hostName);
             }
             if (operatingSystemLayout != null)
             {
                 var operatingSystem = RenderLogEvent(operatingSystemLayout, firstEvent);
                 if (!string.IsNullOrEmpty(operatingSystem))
-                    yield return new KeyValuePair<string, string>("os.type", operatingSystem);
+                    yield return new KeyValuePair<string, object>("os.type", operatingSystem);
             }
+            if (!string.IsNullOrEmpty(telemetrySdkLanguage))
+                yield return new KeyValuePair<string, object>("telemetry.sdk.language", telemetrySdkLanguage);
+            if (!string.IsNullOrEmpty(telemetrySdkName))
+                yield return new KeyValuePair<string, object>("telemetry.sdk.name", telemetrySdkName);
+            if (!string.IsNullOrEmpty(telemetrySdkVersion))
+                yield return new KeyValuePair<string, object>("telemetry.sdk.version", telemetrySdkVersion);
         }
 
         private static string ResolveOperatingSystem()
@@ -593,6 +619,16 @@ namespace NLog.Targets
                 {
                     if (ReferenceEquals(ServiceName, _defaultServiceName) && !string.IsNullOrWhiteSpace(value))
                         ServiceName = value;
+                }
+                else if (string.Equals(key, "service.version", StringComparison.Ordinal))
+                {
+                    if (ReferenceEquals(ServiceVersion, _defaultServiceVersion) && !string.IsNullOrWhiteSpace(value))
+                        ServiceVersion = value;
+                }
+                else if (string.Equals(key, "host.name", StringComparison.Ordinal))
+                {
+                    if (ReferenceEquals(HostName, _defaultHostName) && !string.IsNullOrWhiteSpace(value))
+                        HostName = value;
                 }
                 else
                 {

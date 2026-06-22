@@ -31,18 +31,12 @@ namespace NLog.Internal
 
         private OtlpProtobufSerializer.SubmessageWriter? _scopeLogsWriter;
 
-        private bool _resourceClosed;
-        private bool _disposed;
-
         internal OtlpBatchBuilder(
             OtlpProtobufSerializer serializer,
             MemoryStream stream)
         {
             _serializer = serializer;
             _stream = stream;
-
-            _disposed = false;
-            _resourceClosed = false;
 
             // ExportLogsServiceRequest.ResourceLogs
             _resourceLogsWriter = OtlpProtobufSerializer.BeginSubmessageField(stream, 1);
@@ -58,13 +52,12 @@ namespace NLog.Internal
         /// </summary>
         public void AddResourcePayload(KeyValuePair<byte[], byte[]> cachedResourcePayload)
         {
-            if (_resourceClosed)
+            if (_scopeLogsWriter != null)
                 throw new InvalidOperationException("Resource payload already initialized.");
 
             // Key = Resource payload
             _stream.Write(cachedResourcePayload.Key, 0, cachedResourcePayload.Key.Length);
 
-            _resourceClosed = true;
             _resourceWriter.Dispose();
 
             // ResourceLogs.scope_logs (field 2)
@@ -74,7 +67,7 @@ namespace NLog.Internal
             _stream.Write(cachedResourcePayload.Value, 0, cachedResourcePayload.Value.Length);
         }
 
-        internal static KeyValuePair<byte[], byte[]> CreateResourcePayload(string scopeName, IEnumerable<KeyValuePair<string, string>> resourceAttributes)
+        internal static KeyValuePair<byte[], byte[]> CreateResourcePayload(string scopeName, IEnumerable<KeyValuePair<string, object>> resourceAttributes)
         {
             // Resource payload contents
             using var resourceStream = new MemoryStream();
@@ -84,7 +77,7 @@ namespace NLog.Internal
                 if (string.IsNullOrEmpty(resourceAttribute.Key))
                     continue;
 
-                OtlpProtobufSerializer.WriteKeyStringValue(
+                OtlpProtobufSerializer.WriteKeyValue(
                     resourceStream,
                     1,
                     resourceAttribute.Key,
@@ -130,26 +123,19 @@ namespace NLog.Internal
         /// <summary>
         /// Finalizes protobuf structure.
         /// </summary>
-        public void Dispose()
+        public void Complete()
         {
-            if (_disposed)
-                return;
+            if (_scopeLogsWriter == null)
+                throw new InvalidOperationException("Completed but without adding ScopeLogs.");
 
-            _disposed = true;
-
-            // Close scope logs first (if opened)
+            // Close scope logs
             _scopeLogsWriter?.Dispose();
             _scopeLogsWriter = null;
-
-            // Resource already closed when scope started, but safe to ensure
-            if (!_resourceClosed)
-            {
-                _resourceWriter.Dispose();
-                _resourceClosed = true;
-            }
 
             // Close ResourceLogs and outer request
             _resourceLogsWriter.Dispose();
         }
+
+        public void Dispose() => Complete();
     }
 }

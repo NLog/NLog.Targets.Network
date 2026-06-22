@@ -181,38 +181,38 @@ namespace NLog.Internal
         {
             private readonly OtlpProtobufSerializer _serializer;
             private readonly MemoryStream _stream;
-            private readonly SubmessageWriter _requestWriter;
+            private readonly SubmessageWriter _resourceLogsWriter;
             private readonly SubmessageWriter _resourceWriter;
-            private SubmessageWriter? _scopeWriter;
+            private SubmessageWriter? _scopeLogsWriter;
 
             internal OtlpLogRecordBuilder(OtlpProtobufSerializer serializer, MemoryStream stream)
             {
                 _serializer = serializer;
                 _stream = stream;
 
-                // ExportLogsServiceRequest { repeated ResourceLogs resource_logs = 1 }
-                _requestWriter = BeginSubmessageField(stream, 1);
-                // ResourceLogs { Resource resource = 1; repeated ScopeLogs scope_logs = 2 }
+                // ExportLogsServiceRequest.ResourceLogs
+                _resourceLogsWriter = BeginSubmessageField(stream, 1);
+                // ResourceLogs.Resource
                 _resourceWriter = BeginSubmessageField(stream, 1);
-                _scopeWriter = null;
+                _scopeLogsWriter = null;
             }
 
-            public void AddResourceAttribute(string key, string value)
+            public void AddResourceAttribute(string key, object value)
             {
-                if (_scopeWriter != null)
+                if (_scopeLogsWriter != null)
                     throw new InvalidOperationException("Cannot add Resource attributes after ScopeLogs has started.");
-                WriteKeyStringValue(_stream, 1, key, value);
+                WriteKeyValue(_stream, 1, key, value);
             }
 
             public void BeginScope(string scopeName)
             {
-                if (_scopeWriter != null)
+                if (_scopeLogsWriter != null)
                     throw new InvalidOperationException("Only one ScopeLogs is supported per builder.");
 
                 _resourceWriter.Dispose();  // Ensure Resource is closed before starting ScopeLogs
 
                 // ScopeLogs { InstrumentationScope scope = 1; repeated LogRecord log_records = 2 }
-                _scopeWriter = BeginSubmessageField(_stream, 2);
+                _scopeLogsWriter = BeginSubmessageField(_stream, 2);
                 if (!string.IsNullOrEmpty(scopeName))
                 {
                     // InstrumentationScope { string name = 1; string version = 2 }
@@ -225,7 +225,7 @@ namespace NLog.Internal
 
             public void AddLogRecord<T>(LogEventInfo logEvent, string logMessage, IEnumerable<KeyValuePair<T, object?>>? logProperties)
             {
-                if (_scopeWriter == null)
+                if (_scopeLogsWriter == null)
                     throw new InvalidOperationException("ScopeLogs must be started before adding LogRecords.");
 
                 using (BeginSubmessageField(_stream, 2))
@@ -236,12 +236,12 @@ namespace NLog.Internal
 
             public void Complete()
             {
-                if (_scopeWriter == null)
+                if (_scopeLogsWriter == null)
                     throw new InvalidOperationException("Completed but without adding ScopeLogs.");
 
-                _scopeWriter?.Dispose();
-                _scopeWriter = null;
-                _requestWriter.Dispose();
+                _scopeLogsWriter?.Dispose();
+                _scopeLogsWriter = null;
+                _resourceLogsWriter.Dispose();
             }
 
             public void Dispose() => Complete();
@@ -478,7 +478,7 @@ namespace NLog.Internal
             }
         }
 
-        internal static void WriteKeyStringValue(MemoryStream parent, int fieldNumber, string key, string value)
+        private static void WriteKeyStringValue(MemoryStream parent, int fieldNumber, string key, string value)
         {
             // KeyValue { string key = 1; AnyValue value = 2 }
             var keyMaxBytes = Encoding.UTF8.GetMaxByteCount(key.Length);
@@ -491,7 +491,7 @@ namespace NLog.Internal
             }
         }
 
-        private static void WriteKeyValue(MemoryStream parent, int fieldNumber, string key, object? value, int recursionDepth = 0)
+        internal static void WriteKeyValue(MemoryStream parent, int fieldNumber, string key, object? value, int recursionDepth = 0)
         {
             if (value is string stringValue)
             {
@@ -511,7 +511,7 @@ namespace NLog.Internal
             }
         }
 
-        internal static void WriteVarint(MemoryStream stream, ulong value)
+        private static void WriteVarint(MemoryStream stream, ulong value)
         {
             while (value > 0x7F)
             {
@@ -521,7 +521,7 @@ namespace NLog.Internal
             stream.WriteByte((byte)value);
         }
 
-        internal static void WriteTag(MemoryStream stream, int fieldNumber, int wireType)
+        private static void WriteTag(MemoryStream stream, int fieldNumber, int wireType)
         {
             WriteVarint(stream, (ulong)((fieldNumber << 3) | wireType));
         }
@@ -778,7 +778,7 @@ namespace NLog.Internal
             return utcTicks > 0 ? (ulong)utcTicks * 100UL : 0UL;
         }
 
-        internal static int MapSeverityNumber(LogLevel? level)
+        private static int MapSeverityNumber(LogLevel? level)
         {
             if (level == LogLevel.Trace) return 1;   // SEVERITY_NUMBER_TRACE
             if (level == LogLevel.Debug) return 5;   // SEVERITY_NUMBER_DEBUG
