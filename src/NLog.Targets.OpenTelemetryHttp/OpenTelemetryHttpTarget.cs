@@ -90,7 +90,7 @@ namespace NLog.Targets
             ContentType = "application/x-protobuf"; // application/json not supported, only protobuf as OTLP_PROTOCOL
             BatchSize = 200;                // Consider doubling this if enabling compression
             TaskDelayMilliseconds = 50;     // Small delay to improve chance of batching and reducing number of HTTP requests.
-            RetryDelayMilliseconds = 5000;  // Notice OTel SDK initial backoff is 5 secs
+            RetryDelayMilliseconds = 2500;  // Notice OTel SDK initial backoff is 5 secs
             RetryCount = 3;                 // Notice OTel SDK default max 5 retries
             Layout = "${message}";
             IncludeEventProperties = true;
@@ -285,7 +285,7 @@ namespace NLog.Targets
                 System.Diagnostics.Process.GetCurrentProcess().Id;
 #endif
             string telemetrySdkLanguage = "dotnet";
-            string telemetrySdkName = typeof(OpenTelemetryHttpTarget).ToString();
+            string telemetrySdkName = "NLog.OTLP.HTTP";
             string telemetrySdkVersion = typeof(OpenTelemetryHttpTarget).Assembly.GetName().Version?.ToString() ?? string.Empty;
 
             for (int j = 0; j < ResourceAttributes.Count; ++j)
@@ -369,6 +369,8 @@ namespace NLog.Targets
                 return "linux";
             else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX))
                 return "osx";
+            else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Create("ANDROID")))
+                return "android";
             else
                 return "unknown";
         }
