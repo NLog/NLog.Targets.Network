@@ -88,6 +88,7 @@ namespace NLog.Internal
             //   repeated KeyValue attributes = 6
             //   bytes trace_id = 9
             //   bytes span_id = 10
+            //   string event_name = 12
             var unixNano = ToUnixNano(logEvent.TimeStamp);
             WriteFixed64Field(stream, 1, unixNano);
 
@@ -116,10 +117,11 @@ namespace NLog.Internal
                 WriteKeyStringValue(stream, 6, "exception.stacktrace", logEvent.Exception.ToString());
             }
 
+            string eventNameKey = string.Empty;
+            string eventNameValue = string.Empty;
             if (logProperties != null)
             {
                 string eventId = string.Empty;
-                string eventName = string.Empty;
 
                 if (logEvent.HasProperties)
                 {
@@ -129,10 +131,10 @@ namespace NLog.Internal
                         eventId = "EventId";
                         WriteKeyValue(stream, 6, "event.id", eventIdObj);
                     }
-                    if (logEvent.Properties.TryGetValue("EventName", out var eventNameObj) && eventNameObj != null)
+                    if (logEvent.Properties.TryGetValue("EventName", out var eventNameObj) && eventNameObj is string eventNameString)
                     {
-                        eventName = "EventName";
-                        WriteKeyValue(stream, 6, "event.name", eventNameObj);
+                        eventNameKey = "EventName";
+                        eventNameValue = eventNameString;
                     }
                 }
 
@@ -148,7 +150,7 @@ namespace NLog.Internal
 
                         if (!ReferenceEquals(eventId, string.Empty) && key == eventId)
                             continue;
-                        if (!ReferenceEquals(eventName, string.Empty) && key == eventName)
+                        if (!ReferenceEquals(eventNameKey, string.Empty) && key == eventNameKey)
                             continue;
 
                         WriteKeyValue(stream, 6, key, prop.Value);
@@ -170,6 +172,11 @@ namespace NLog.Internal
             if (spanId.HasValue)
             {
                 WriteSpanIdField(stream, 10, spanId.Value);
+            }
+
+            if (!string.IsNullOrEmpty(eventNameValue))
+            {
+                WriteStringField(stream, 12, eventNameValue);
             }
         }
 
