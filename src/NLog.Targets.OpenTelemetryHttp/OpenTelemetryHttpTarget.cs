@@ -45,7 +45,7 @@ namespace NLog.Targets
     using NLog.Layouts;
 
     /// <summary>
-    /// Sends log messages to an OpenTelemetry OTLP endpoint using protobuf encoding over HTTP.
+    /// Sends log events to OpenTelemetry HTTP endpoint using protobuf (OTLP/HTTP).
     /// </summary>
     /// <remarks>
     /// <para>
