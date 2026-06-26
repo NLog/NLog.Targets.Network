@@ -16,7 +16,7 @@
 
     <Title>NLog.Targets.OpenTelemetryHttp</Title>
     <Company>NLog</Company>
-    <Description>NLog OpenTelemetryHttpTarget for sending log messages to an OpenTelemetry OTLP endpoint using protobuf encoding over HTTP.</Description>
+    <Description>NLog OpenTelemetryHttpTarget for sending log events to OpenTelemetry HTTP endpoint using protobuf (OTLP/HTTP).</Description>
     <Product>NLog.Targets.OpenTelemetryHttp v$(ProductVersion)</Product>
     <InformationalVersion>$(ProductVersion)</InformationalVersion>
     <Authors>Jarek Kowalski,Kim Christensen,Julian Verdurmen</Authors>

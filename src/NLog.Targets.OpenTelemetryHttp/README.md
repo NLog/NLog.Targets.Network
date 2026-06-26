@@ -3,7 +3,7 @@
 [![Version](https://badge.fury.io/nu/NLog.Targets.OpenTelemetryHttp.svg)](https://www.nuget.org/packages/NLog.Targets.OpenTelemetryHttp)
 [![AppVeyor](https://img.shields.io/appveyor/ci/NLog/NLog-Targets-Network/master.svg)](https://ci.appveyor.com/project/NLog/NLog-Targets-Network/branch/master)
 
-NLog `OpenTelemetry` target for sending log messages to an OpenTelemetry OTLP endpoint using protobuf encoding over HTTP (OTLP/HTTP).
+NLog `OpenTelemetry` target for sending log events to OpenTelemetry HTTP endpoint using protobuf (OTLP/HTTP).
 
 If having trouble with output, then check [NLog InternalLogger](https://github.com/NLog/NLog/wiki/Internal-Logging) for clues. See also [Troubleshooting NLog](https://github.com/NLog/NLog/wiki/Logging-Troubleshooting).
 
