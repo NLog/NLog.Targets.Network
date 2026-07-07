@@ -620,11 +620,12 @@ namespace NLog.Targets
         private HttpClient ResetHttpClientIfNeeded(Uri? url)
         {
             var oldHttpClient = _httpClient;
+            var baseAddressUri = GetBaseAddressUri(url);
 
             int nowTickCount = Environment.TickCount;
             if (!HttpClientLifeTimeExpired(nowTickCount, _httpClientLifeTimeTicks) && oldHttpClient != null)
             {
-                if (url is null || oldHttpClient.BaseAddress.Equals(url))
+                if (Equals(oldHttpClient.BaseAddress, baseAddressUri))
                     return oldHttpClient;
             }
 
@@ -632,12 +633,12 @@ namespace NLog.Targets
             lock (_reusableEncodingBuffer)
             {
                 oldHttpClient = _httpClient;
-                if (!HttpClientLifeTimeExpired(nowTickCount, _httpClientLifeTimeTicks) && oldHttpClient != null && (url is null || oldHttpClient.BaseAddress.Equals(url)))
+                if (!HttpClientLifeTimeExpired(nowTickCount, _httpClientLifeTimeTicks) && oldHttpClient != null && Equals(oldHttpClient.BaseAddress, baseAddressUri))
                     return oldHttpClient;
 
                 _httpClient = null;
                 oldHttpClient?.Dispose();
-                _httpClient = oldHttpClient = CreateNewHttpClient(url);
+                _httpClient = oldHttpClient = CreateNewHttpClient(baseAddressUri);
                 _httpClientCreatedTicks = nowTickCount;
             }
 
@@ -660,17 +661,26 @@ namespace NLog.Targets
             }
         }
 
-        private HttpClient CreateNewHttpClient(Uri? url)
+        private Uri GetBaseAddressUri(Uri? url)
+        {
+            if (url != null)
+                return url;
+
+            var nullEvent = LogEventInfo.CreateNullEvent();
+            var baseAddress = Url?.Render(nullEvent);
+            if (!Uri.TryCreate(baseAddress, UriKind.Absolute, out var baseAddressUri))
+                throw new NLogRuntimeException($"Invalid {nameof(Url)} specified for {GetType()}: {baseAddress}");
+            return baseAddressUri;
+        }
+
+        private HttpClient CreateNewHttpClient(Uri baseAddressUri)
         {
             var nullEvent = LogEventInfo.CreateNullEvent();
 
-            var baseAddress = url?.ToString() ?? Url?.Render(nullEvent);
             if (_httpClientCreatedTicks == 0)
-                NLog.Common.InternalLogger.Info("{0}: Creating HttpClient for BaseAddress: {1}", this, baseAddress);
+                NLog.Common.InternalLogger.Info("{0}: Creating HttpClient for BaseAddress: {1}", this, baseAddressUri);
             else
-                NLog.Common.InternalLogger.Debug("{0}: Creating HttpClient for BaseAddress: {1}", this, baseAddress);
-            if (!Uri.TryCreate(baseAddress, UriKind.Absolute, out var baseAddressUri))
-                throw new NLogRuntimeException($"Invalid {nameof(Url)} specified for {GetType()}: {baseAddress}");
+                NLog.Common.InternalLogger.Debug("{0}: Creating HttpClient for BaseAddress: {1}", this, baseAddressUri);
 
             var handler = new HttpClientHandler();
 

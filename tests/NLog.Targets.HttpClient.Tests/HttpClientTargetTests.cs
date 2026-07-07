@@ -249,6 +249,54 @@ namespace NLog.Targets.HttpClient.Tests
         }
 
         [Fact]
+        public void UrlLayoutChange_RecreatesHttpClientForNewRenderedUrl()
+        {
+            using (var firstServer = new SimpleHttpServer())
+            using (var secondServer = new SimpleHttpServer())
+            {
+                const string gdcKey = "HttpClientTargetTests_LogUrl";
+                try
+                {
+                    GlobalDiagnosticsContext.Set(gdcKey, $"http://127.0.0.1:{firstServer.Port}");
+
+                    var target = new HttpClientTarget
+                    {
+                        Url = $"${{gdc:item={gdcKey}}}/logs",
+                        Layout = "${message}",
+                        RetryCount = 0,
+                        TaskDelayMilliseconds = 1,
+                    };
+
+                    using (var logFactory = BuildLogFactory(target))
+                    {
+                        logFactory.ThrowExceptions = false;
+                        var logger = logFactory.GetLogger("TestLogger");
+
+                        logger.Info("first");
+                        logFactory.Flush();
+
+                        var firstRequests = firstServer.WaitForRequests(1);
+                        Assert.Single(firstRequests);
+                        Assert.Equal("first", firstRequests[0].Body);
+
+                        GlobalDiagnosticsContext.Set(gdcKey, $"http://127.0.0.1:{secondServer.Port}");
+
+                        logger.Info("second");
+                        logFactory.Flush();
+
+                        var secondRequests = secondServer.WaitForRequests(1, 1000);
+                        Assert.Single(secondRequests);
+                        Assert.Equal("second", secondRequests[0].Body);
+                    }
+                }
+                finally
+                {
+                    GlobalDiagnosticsContext.Remove(gdcKey);
+                }
+            }
+        }
+
+        [Fact]
         public void MaxPayloadSizeBytes_SplitsLargeBatchIntoMultipleRequests()
         {
             using (var server = new SimpleHttpServer())
