@@ -449,7 +449,8 @@ namespace NLog.Targets
 #endif
                     {
                         // Retry 429 + 408 + 5xx (server errors, typically transient)
-                        throw;
+                        if (RetryCount > 0)
+                            throw;
                     }
 
                     // Swallow other failures (e.g. 400 Bad Request) without retrying
@@ -462,7 +463,9 @@ namespace NLog.Targets
                 NLog.Common.InternalLogger.Error(ex, "{0}: HTTP request failed with status code {1}", this, (int)httpStatusCode);
                 if (httpStatusCode == 0 && HttpClientLifeTimeExpired(Environment.TickCount, 5000))
                     SignalHttpClientReset();  // Reset HttpClient immediately on transport-level failures (e.g. DNS failure, network failure) to clear the stale HttpClient TCP connection pool.
-                throw;
+                if (RetryCount > 0)
+                    throw;
+                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
             }
         }
 
