@@ -371,13 +371,14 @@ namespace NLog.Targets
             try
             {
                 int lastBatchSize = 0;
+                var baseUrl = RenderBaseUrl(logEvents[0]);
                 var httpContent = Compress == HttpCompressionType.None ? BuildChunk(output, logEvents, 0, out lastBatchSize) : GZipCompressChunk(output, logEvents, 0, out lastBatchSize);
                 {
-                    using var _ = await HttpClientSendAsync(null, httpContent, cancellationToken).ConfigureAwait(false);
+                    using var _ = await HttpClientSendAsync(baseUrl, httpContent, cancellationToken).ConfigureAwait(false);
                 }
                 if (lastBatchSize != logEvents.Count)
                 {
-                    await HttpSendBatchesAsync(output, lastBatchSize, logEvents, cancellationToken).ConfigureAwait(false);
+                    await HttpSendBatchesAsync(baseUrl, output, lastBatchSize, logEvents, cancellationToken).ConfigureAwait(false);
                 }
             }
             catch
@@ -399,14 +400,14 @@ namespace NLog.Targets
             oldStream.Dispose();
         }
 
-        private async Task HttpSendBatchesAsync(MemoryStream output, int lastBatchSize, IList<LogEventInfo> logEvents, CancellationToken cancellationToken)
+        private async Task HttpSendBatchesAsync(Uri baseUrl, MemoryStream output, int lastBatchSize, IList<LogEventInfo> logEvents, CancellationToken cancellationToken)
         {
             int batchStartIndex = lastBatchSize;
             while (batchStartIndex < logEvents.Count)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var httpContent = Compress == HttpCompressionType.None ? BuildChunk(output, logEvents, batchStartIndex, out lastBatchSize) : GZipCompressChunk(output, logEvents, batchStartIndex, out lastBatchSize);
-                using var _ = await HttpClientSendAsync(null, httpContent, cancellationToken).ConfigureAwait(false);
+                using var _ = await HttpClientSendAsync(baseUrl, httpContent, cancellationToken).ConfigureAwait(false);
                 batchStartIndex += lastBatchSize;
             }
         }
@@ -617,15 +618,33 @@ namespace NLog.Targets
             }
         }
 
-        private HttpClient ResetHttpClientIfNeeded(Uri? url)
+        private Uri RenderBaseUrl(LogEventInfo logEventInfo)
+        {
+            var lastRenderedBaseUri = _lastRenderedBaseUri;
+
+            var baseUrl = RenderLogEvent(Url, logEventInfo);
+            if (string.IsNullOrEmpty(baseUrl))
+                throw new NLogRuntimeException($"Invalid {nameof(Url)} specified for {GetType()}: {baseUrl}");
+
+            if (lastRenderedBaseUri != null && string.Equals(lastRenderedBaseUri.Item1, baseUrl, StringComparison.Ordinal))
+                return lastRenderedBaseUri.Item2;
+
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri))
+                throw new NLogRuntimeException($"Invalid {nameof(Url)} specified for {GetType()}: {baseUrl}");
+
+            _lastRenderedBaseUri = new Tuple<string, Uri>(baseUrl, uri);
+            return uri;
+        }
+        private Tuple<string, Uri>? _lastRenderedBaseUri = null;
+
+        private HttpClient ResetHttpClientIfNeeded(Uri? baseUrl)
         {
             var oldHttpClient = _httpClient;
-            var baseAddressUri = GetBaseAddressUri(url);
 
             int nowTickCount = Environment.TickCount;
             if (!HttpClientLifeTimeExpired(nowTickCount, _httpClientLifeTimeTicks) && oldHttpClient != null)
             {
-                if (Equals(oldHttpClient.BaseAddress, baseAddressUri))
+                if (baseUrl is null || oldHttpClient.BaseAddress.Equals(baseUrl))
                     return oldHttpClient;
             }
 
@@ -633,12 +652,12 @@ namespace NLog.Targets
             lock (_reusableEncodingBuffer)
             {
                 oldHttpClient = _httpClient;
-                if (!HttpClientLifeTimeExpired(nowTickCount, _httpClientLifeTimeTicks) && oldHttpClient != null && Equals(oldHttpClient.BaseAddress, baseAddressUri))
+                if (!HttpClientLifeTimeExpired(nowTickCount, _httpClientLifeTimeTicks) && oldHttpClient != null && (baseUrl is null || oldHttpClient.BaseAddress.Equals(baseUrl)))
                     return oldHttpClient;
 
                 _httpClient = null;
                 oldHttpClient?.Dispose();
-                _httpClient = oldHttpClient = CreateNewHttpClient(baseAddressUri);
+                _httpClient = oldHttpClient = CreateNewHttpClient(baseUrl);
                 _httpClientCreatedTicks = nowTickCount;
             }
 
@@ -661,26 +680,22 @@ namespace NLog.Targets
             }
         }
 
-        private Uri GetBaseAddressUri(Uri? url)
-        {
-            if (url != null)
-                return url;
-
-            var nullEvent = LogEventInfo.CreateNullEvent();
-            var baseAddress = Url?.Render(nullEvent);
-            if (!Uri.TryCreate(baseAddress, UriKind.Absolute, out var baseAddressUri))
-                throw new NLogRuntimeException($"Invalid {nameof(Url)} specified for {GetType()}: {baseAddress}");
-            return baseAddressUri;
-        }
-
-        private HttpClient CreateNewHttpClient(Uri baseAddressUri)
+        private HttpClient CreateNewHttpClient(Uri? baseUrl)
         {
             var nullEvent = LogEventInfo.CreateNullEvent();
 
+            var baseAddress = baseUrl?.ToString() ?? Url?.Render(nullEvent);
             if (_httpClientCreatedTicks == 0)
-                NLog.Common.InternalLogger.Info("{0}: Creating HttpClient for BaseAddress: {1}", this, baseAddressUri);
+                NLog.Common.InternalLogger.Info("{0}: Creating HttpClient for BaseAddress: {1}", this, baseAddress);
             else
-                NLog.Common.InternalLogger.Debug("{0}: Creating HttpClient for BaseAddress: {1}", this, baseAddressUri);
+                NLog.Common.InternalLogger.Debug("{0}: Creating HttpClient for BaseAddress: {1}", this, baseAddress);
+
+            if (baseUrl is null)
+            {
+                if (!Uri.TryCreate(baseAddress, UriKind.Absolute, out var baseAddressUri))
+                    throw new NLogRuntimeException($"Invalid {nameof(Url)} specified for {GetType()}: {baseAddress}");
+                baseUrl = baseAddressUri;
+            }
 
             var handler = new HttpClientHandler();
 
@@ -751,7 +766,7 @@ namespace NLog.Targets
 
             var newHttpClient = new HttpClient(handler)
             {
-                BaseAddress = baseAddressUri,
+                BaseAddress = baseUrl,
             };
             if (SendTimeoutSeconds > 0)
                 newHttpClient.Timeout = TimeSpan.FromSeconds(SendTimeoutSeconds);
