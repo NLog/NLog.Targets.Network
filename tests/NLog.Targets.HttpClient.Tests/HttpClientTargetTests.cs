@@ -434,7 +434,7 @@ namespace NLog.Targets.HttpClient.Tests
                     Layout = "${message}",
                     BatchSize = 1,
                     RetryCount = 0,
-                    RetryDelayMilliseconds = 2000,
+                    RetryDelayMilliseconds = 1,  // Avoid delay when network connectivity issues
                     TaskDelayMilliseconds = 1,
                 };
 
