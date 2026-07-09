@@ -297,6 +297,41 @@ namespace NLog.Targets.HttpClient.Tests
         }
 
         [Fact]
+        public void TransportFailureWithoutRetry_DoesNotDelayNextWrite()
+        {
+            using (var server = new SimpleHttpServer())
+            {
+                var target = new HttpClientTarget
+                {
+                    Url = "http://nlog-targets-httpclient-invalid.invalid/logs",
+                    Layout = "${message}",
+                    RetryCount = 0,
+                    RetryDelayMilliseconds = 10,
+                    SendTimeoutSeconds = 1,
+                    TaskDelayMilliseconds = 1,
+                };
+
+                using (var logFactory = BuildLogFactory(target))
+                {
+                    logFactory.ThrowExceptions = false;
+                    var logger = logFactory.GetLogger("TestLogger");
+
+                    logger.Info("fails");
+                    logFactory.Flush();
+
+                    target.Url = $"http://127.0.0.1:{server.Port}/logs";
+
+                    Assert.Equal(0, server.RequestCount);
+                    logger.Info("succeeds");
+
+                    var requests = server.WaitForRequests(1, 10000);
+                    Assert.Single(requests);
+                    Assert.Equal("succeeds", requests[0].Body);
+                }
+            }
+        }
+
+        [Fact]
         public void MaxPayloadSizeBytes_SplitsLargeBatchIntoMultipleRequests()
         {
             using (var server = new SimpleHttpServer())
@@ -386,6 +421,51 @@ namespace NLog.Targets.HttpClient.Tests
             }
         }
 
+        [Fact]
+        public void FailedWriteWithoutRetry_DoesNotDelayNextQueuedBatch()
+        {
+            using (var server = new SimpleHttpServer())
+            {
+                server.ResponseStatusCode = 500;
+
+                var target = new HttpClientTarget
+                {
+                    Url = $"http://127.0.0.1:{server.Port}/logs",
+                    Layout = "${message}",
+                    BatchSize = 1,
+                    RetryCount = 0,
+                    RetryDelayMilliseconds = 1,  // Avoid delay when network connectivity issues
+                    TaskDelayMilliseconds = 1,
+                };
+
+                using (var logFactory = BuildLogFactory(target))
+                {
+                    logFactory.ThrowExceptions = false;
+                    var logger = logFactory.GetLogger("TestLogger");
+
+                    logger.Info("fails");
+
+                    var failedRequests = server.WaitForRequests(1, 1000);
+                    Assert.Single(failedRequests);
+                    Assert.Equal("fails", failedRequests[0].Body);
+                    Assert.Equal(1, server.RequestCount);
+
+                    server.ResponseStatusCode = 200;
+
+                    var stopwatch = Stopwatch.StartNew();
+                    logger.Info("succeeds");
+
+                    var requests = server.WaitForRequests(2, 500);
+                    stopwatch.Stop();
+
+                    Assert.Equal(2, requests.Count);
+                    Assert.Equal("succeeds", requests[1].Body);
+                    Assert.True(stopwatch.ElapsedMilliseconds < 900, $"Expected immediate write after failed batch, but elapsed {stopwatch.ElapsedMilliseconds} ms.");
+                }
+            }
+        }
+
+
         private static LogFactory BuildLogFactory(HttpClientTarget target)
         {
             var logFactory = new LogFactory();
@@ -416,6 +496,15 @@ namespace NLog.Targets.HttpClient.Tests
             public int ResponseStatusCode { get; set; } = 200;
 
             public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
+
+            public int RequestCount
+            {
+                get
+                {
+                    lock (_lock)
+                        return _requests.Count;
+                }
+            }
 
             public SimpleHttpServer()
             {
