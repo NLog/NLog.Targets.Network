@@ -45,6 +45,7 @@ namespace NLog.Targets.HttpClient.Tests
     using System.Threading.Tasks;
     using NLog.Config;
     using NLog.Targets;
+    using NLog.Targets.Wrappers;
     using Xunit;
 
     public class HttpClientTargetTests
@@ -418,6 +419,110 @@ namespace NLog.Targets.HttpClient.Tests
                 // 400 is not retried, so only 1 request
                 var requests = server.WaitForRequests(1);
                 Assert.Single(requests);
+            }
+        }
+
+        [Fact]
+        public void Server4xx_RetryCountZero_TriggersAsyncContinuationError()
+        {
+            // When RetryCount <= 0, a non-retryable HTTP error (4xx) is re-thrown so that
+            // NLog's AsyncContinuation receives the exception. FallbackGroupTarget then
+            // routes the log event to the fallback MethodCallTarget, proving the
+            // AsyncContinuation error was fired.
+            using (var server = new SimpleHttpServer())
+            {
+                server.ResponseStatusCode = 400;
+
+                var fallbackMessages = new List<string>();
+                var fallbackTarget = new MethodCallTarget("fallback", (logEvent, parameters) =>
+                {
+                    lock (fallbackMessages)
+                        fallbackMessages.Add(logEvent.FormattedMessage);
+                });
+
+                var httpTarget = new HttpClientTarget
+                {
+                    Name = "http",
+                    Url = $"http://127.0.0.1:{server.Port}/logs",
+                    Layout = "${message}",
+                    RetryCount = 0,
+                    RetryDelayMilliseconds = 10,
+                };
+
+                var fallbackGroupTarget = new FallbackGroupTarget
+                {
+                    Name = "fallbackGroup",
+                    ReturnToFirstOnSuccess = true,
+                    Targets = { httpTarget, fallbackTarget },
+                };
+
+                using (var logFactory = new LogFactory())
+                {
+                    logFactory.ThrowExceptions = false;
+                    var config = new LoggingConfiguration(logFactory);
+                    config.AddRuleForAllLevels(fallbackGroupTarget);
+                    logFactory.Configuration = config;
+
+                    logFactory.GetLogger("TestLogger").Info("test message");
+                    logFactory.Flush();
+                }
+
+                var requests = server.WaitForRequests(1);
+                Assert.Single(requests);  // Only 1 HTTP request sent, no retry for 4xx
+                lock (fallbackMessages)
+                    Assert.Single(fallbackMessages);  // AsyncContinuation error triggered FallbackGroupTarget
+            }
+        }
+
+        [Fact]
+        public void Server5xx_RetryCountPositive_TriggersAsyncContinuationError()
+        {
+            // When RetryCount > 0, a retryable HTTP error (5xx) is re-thrown so that
+            // NLog's AsyncContinuation receives the exception. FallbackGroupTarget then
+            // routes the log event to the fallback MethodCallTarget, proving the
+            // AsyncContinuation error was fired.
+            using (var server = new SimpleHttpServer())
+            {
+                server.ResponseStatusCode = 500;
+
+                var fallbackMessages = new List<string>();
+                var fallbackTarget = new MethodCallTarget("fallback", (logEvent, parameters) =>
+                {
+                    lock (fallbackMessages)
+                        fallbackMessages.Add(logEvent.FormattedMessage);
+                });
+
+                var httpTarget = new HttpClientTarget
+                {
+                    Name = "http",
+                    Url = $"http://127.0.0.1:{server.Port}/logs",
+                    Layout = "${message}",
+                    RetryCount = 1,
+                    RetryDelayMilliseconds = 10,
+                };
+
+                var fallbackGroupTarget = new FallbackGroupTarget
+                {
+                    Name = "fallbackGroup",
+                    ReturnToFirstOnSuccess = false,
+                    Targets = { httpTarget, fallbackTarget },
+                };
+
+                using (var logFactory = new LogFactory())
+                {
+                    logFactory.ThrowExceptions = false;
+                    var config = new LoggingConfiguration(logFactory);
+                    config.AddRuleForAllLevels(fallbackGroupTarget);
+                    logFactory.Configuration = config;
+
+                    logFactory.GetLogger("TestLogger").Info("test message");
+                    logFactory.Flush();
+                }
+
+                var requests = server.WaitForRequests(1);
+                Assert.Equal(2, requests.Count);  // 1 initial attempt + 1 retry = 2 total requests
+                lock (fallbackMessages)
+                    Assert.Single(fallbackMessages);  // Error suppressed, fallback NOT triggered
             }
         }
 
