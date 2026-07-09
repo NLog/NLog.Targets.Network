@@ -30,7 +30,7 @@ Changelog:
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>NLog;HTTP;HTTPS;HttpClient;logging;log</PackageTags>
     <PackageIcon>N.png</PackageIcon>
-    <PackageProjectUrl>https://github.com/NLog/NLog.Targets.Network</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/NLog/NLog.Targets.Network/tree/master/src/NLog.Targets.HttpClient</PackageProjectUrl>
     <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/NLog/NLog.Targets.Network.git</RepositoryUrl>
