@@ -453,6 +453,9 @@ namespace NLog.Targets
                         throw;
                     }
 
+                    if (RetryCount <= 0)
+                        throw;  // When no retry configured, then also re-throw the exception for non-transient errors for NLog AsyncContinuation reporting
+
                     // Swallow other failures (e.g. 400 Bad Request) without retrying
                     NLog.Common.InternalLogger.Error(ex, "{0}: HTTP request failed with status code {1}", this, (int)httpStatusCode);
                 }
