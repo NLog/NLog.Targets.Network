@@ -7,7 +7,7 @@ NLog `HttpClient` target for sending log events to an HTTP or HTTPS endpoint.
 
 * HTTP POST, GET, and custom HTTP methods
 * Batching of multiple log events
-* Supports JSON Array batching and also JSON Newline Delimited (NDJSON)
+* Supports batching as JSON Array and also JSON Newline Delimited (NDJSON)
 * GZip compression
 * Custom request headers
 * HTTP authentication
