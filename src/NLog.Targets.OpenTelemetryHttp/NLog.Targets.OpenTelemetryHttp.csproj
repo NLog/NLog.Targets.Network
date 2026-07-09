@@ -31,7 +31,7 @@ Changelog:
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>NLog;OpenTelemetry;OTLP;logging;log</PackageTags>
     <PackageIcon>N.png</PackageIcon>
-    <PackageProjectUrl>https://github.com/NLog/NLog.Targets.Network</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/NLog/NLog.Targets.Network/tree/master/src/NLog.Targets.OpenTelemetryHttp</PackageProjectUrl>
     <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/NLog/NLog.Targets.Network.git</RepositoryUrl>
