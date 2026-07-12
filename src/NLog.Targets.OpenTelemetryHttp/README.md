@@ -67,13 +67,13 @@ Supports the standard OpenTelemetry environment variables as fallback defaults:
 | ------------------------ | ------------------------------ | -----------------------------------------------------------------------------|
 | `url`                    | OTEL_EXPORTER_OTLP_ENDPOINT    | OTLP/HTTP endpoint URL. Automatically append `/v1/logs` when missing.        |
 | `layout`                 | `${message}`                   | Layout used to populate the OpenTelemetry `LogRecord.Body` field.            |
-| `serviceName`            | `${appdomain:format=Friendly}` | OpenTelemetry `service.name` resource attribute.                             |
-| `serviceVersion`         | `${assembly-version:Default=}` | OpenTelemetry `service.version` resource attribute.                          |
-| `hostName`               | `${hostname}`                  | OpenTelemetry `host.name` resource attribute.                                |
-| `scopeName`              | `NLog`                         | OpenTelemetry instrumentation scope name.                                    |
 | `traceId`                | `${activity:property=TraceId}` | Layout used to populate the OpenTelemetry `LogRecord.TraceId` field.         |
 | `spanId`                 | `${activity:property=SpanId}`  | Layout used to populate the OpenTelemetry `LogRecord.SpanId` field.          |
 | `includeEventProperties` | `true`                         | Includes NLog event properties as OpenTelemetry log attributes.              |
+| `scopeName`              | `NLog`                         | OpenTelemetry instrumentation scope name.                                    |
+| `serviceName`            | `${appdomain:format=Friendly}` | OpenTelemetry `service.name` resource attribute.                             |
+| `serviceVersion`         | `${assembly-version:Default=}` | OpenTelemetry `service.version` resource attribute.                          |
+| `hostName`               | `${hostname}`                  | OpenTelemetry `host.name` resource attribute.                                |
 | `resourceAttributes`     | OTEL_RESOURCE_ATTRIBUTES       | Additional OpenTelemetry resource attributes.                                |
 | `headers`                | OTEL_EXPORTER_OTLP_HEADERS     | Additional HTTP headers.                                                     |
 | `sendTimeoutSeconds`     | `30`                           | HTTP request timeout in seconds.                                             |
