@@ -58,8 +58,8 @@ Supports standard OpenTelemetry environment variables as fallback defaults:
 ## Parameters
 
 | Parameter                | Default                        | Description                                                                  |
-| ------------------------ | -------------------------------| -----------------------------------------------------------------------------|
-| `url`                    | OTEL_EXPORTER_OTLP_ENDPOINT    | OTLP/HTTP endpoint URL. Automatically append `/v1/logs` when missing         |
+| ------------------------ | ------------------------------ | -----------------------------------------------------------------------------|
+| `url`                    | OTEL_EXPORTER_OTLP_ENDPOINT    | OTLP/HTTP endpoint URL. Automatically append `/v1/logs` when missing.        |
 | `serviceName`            | `${appdomain:format=Friendly}` | OpenTelemetry `service.name` resource attribute.                             |
 | `serviceVersion`         | `${assembly-version:Default=}` | OpenTelemetry `service.version` resource attribute.                          |
 | `hostName`               | `${hostname}`                  | OpenTelemetry `host.name` resource attribute.                                |
@@ -67,23 +67,31 @@ Supports standard OpenTelemetry environment variables as fallback defaults:
 | `layout`                 | `${message}`                   | Layout used for the OTLP log body (message text).                            |
 | `traceId`                | `${activity:property=TraceId}` | Layout used to populate the OTLP LogRecord TraceId field.                    |
 | `spanId`                 | `${activity:property=SpanId}`  | Layout used to populate the OTLP LogRecord SpanId field.                     |
-| `compress`               | `None`                         | Optional payload compression. Supports `None`, `GZip`, and `GZipFast`.       |
-| `batchSize`              | `200`                          | Maximum number of log events processed in a batch before transmission.       |
 | `includeEventProperties` | `true`                         | Includes NLog event properties as OpenTelemetry log attributes.              |
-| `sendTimeoutSeconds`     | 30                             | HTTP request timeout.                                                        |
-| `maxPayloadSizeBytes`    | 40960                          | Maximum payload size before automatic request chunking occurs.               |
-| `sslCertificateFile`     |                                | Client certificate file used for mutual TLS authentication.                  |
-| `sslCertificatePassword` |                                | Password for the client certificate.                                         |
-| `proxyUrl`               |                                | Proxy server URL.                                                            |
-| `proxyUser`              |                                | Proxy authentication username.                                               |
-| `proxyPassword`          |                                | Proxy authentication password.                                               |
-| `batchSize`              | `200`                          | Maximum number of log events to send in a single HTTP payload.               |
-| `taskDelayMilliseconds`  | `50`                           | Delay before processing queued log events. Higher value can improve batching |
-| `taskTimeoutSeconds`     | `150`                          | Maximum execution time in seconds before cancellation of HTTP request.       |
-| `retryCount`             | `3`                            | Number of retry attempts for failed write operations.                        |
-| `retryDelayMilliseconds` | `2500`                         | Initial delay before retry after failed request. Delay doubles for each retry. |
-| `queueLimit`             | `10000`                        | Maximum number of pending requests allowed in the internal queue.            |
-| `overflowAction`         | `Discard`                      | Action taken when the internal request queue reaches its limit.              |
+| `sendTimeoutSeconds`     | `30`                           | HTTP request timeout in seconds.                                             |
+
+| Batching and Retry       | Default             | Description                                                                       |
+| ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
+| `batchSize`              | `200`               | Maximum number of log events to send in a single HTTP payload.                    |
+| `compress`               | `None`              | Optional payload compression. Supports `None`, `GZip`, and `GZipFast`.            |
+| `lineEnding`             | `LF`                | Line separator used when batching log events.                                     |
+| `batchAsJsonArray`       | `false`             | Wraps batched log events in a JSON array instead of separating them with `lineEnding`. |
+| `maxPayloadSizeBytes`    | `40960`             | Max payload size before splitting into multiple HTTP requests. Remember `BatchSize` |
+| `taskDelayMilliseconds`  | `50`                | Delay before processing queued log events. Higher value can improve batching      |
+| `taskTimeoutSeconds`     | `150`               | Maximum time in seconds before cancellation of HTTP request.                      |
+| `retryCount`             | `0`                 | Number of retry attempts for failed write operations.                             |
+| `retryDelayMilliseconds` | `2500`              | Initial delay before retry after failed request. Delay doubles for each retry.    |
+| `queueLimit`             | `10000`             | Maximum number of pending log events allowed in the internal queue.               |
+| `overflowAction`         | `Discard`           | Action taken when the internal request queue reaches its limit.                   |
+
+
+| Authentication and Security | Default          | Description                                                                       |
+| ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
+| `sslCertificateFile`     |                     | Client certificate file used for mutual TLS authentication.                       |
+| `sslCertificatePassword` |                     | Password for the client certificate.                                              |
+| `proxyUrl`               |                     | Proxy server URL.                                                                 |
+| `proxyUser`              |                     | Proxy authentication username.                                                    |
+| `proxyPassword`          |                     | Proxy authentication password.                                                    |
 
 
 ## Resource Attributes
