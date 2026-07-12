@@ -3,7 +3,8 @@
 [![Version](https://badge.fury.io/nu/NLog.Targets.OpenTelemetryHttp.svg)](https://www.nuget.org/packages/NLog.Targets.OpenTelemetryHttp)
 [![AppVeyor](https://img.shields.io/appveyor/ci/NLog/NLog-Targets-Network/master.svg)](https://ci.appveyor.com/project/NLog/NLog-Targets-Network/branch/master)
 
-NLog `OpenTelemetry` target for sending log events to OpenTelemetry HTTP endpoint using protobuf (OTLP/HTTP).
+
+NLog `OpenTelemetry` target for exporting log events to an OpenTelemetry Collector or any OTLP/HTTP-compatible endpoint.
 
 If having trouble with output, then check [NLog InternalLogger](https://github.com/NLog/NLog/wiki/Internal-Logging) for clues. See also [Troubleshooting NLog](https://github.com/NLog/NLog/wiki/Logging-Troubleshooting).
 
@@ -34,11 +35,6 @@ LogManager.Setup().SetupExtensions(ext => {
 
 Typical endpoint URL is `http://localhost:4318/v1/logs`.
 
-Supports standard OpenTelemetry environment variables as fallback defaults:
-`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_LOGS_HEADERS`,
-`OTEL_EXPORTER_OTLP_COMPRESSION`, `OTEL_EXPORTER_OTLP_LOGS_COMPRESSION`, `OTEL_EXPORTER_OTLP_TIMEOUT`, `OTEL_EXPORTER_OTLP_LOGS_TIMEOUT`,
-`OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`.
-
 ```xml
 <targets>
     <target xsi:type="OpenTelemetry"
@@ -53,20 +49,30 @@ Supports standard OpenTelemetry environment variables as fallback defaults:
 </rules>
 ```
 
-## Parameters
+Supports the standard OpenTelemetry environment variables as fallback defaults:
+- `OTEL_EXPORTER_OTLP_ENDPOINT`
+- `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`
+- `OTEL_EXPORTER_OTLP_HEADERS`
+- `OTEL_EXPORTER_OTLP_LOGS_HEADERS`
+- `OTEL_EXPORTER_OTLP_COMPRESSION`
+- `OTEL_EXPORTER_OTLP_LOGS_COMPRESSION`
+- `OTEL_EXPORTER_OTLP_TIMEOUT`
+- `OTEL_EXPORTER_OTLP_LOGS_TIMEOUT`
+- `OTEL_SERVICE_NAME`
+- `OTEL_RESOURCE_ATTRIBUTES`
 
 ## Parameters
 
 | Parameter                | Default                        | Description                                                                  |
 | ------------------------ | ------------------------------ | -----------------------------------------------------------------------------|
 | `url`                    | OTEL_EXPORTER_OTLP_ENDPOINT    | OTLP/HTTP endpoint URL. Automatically append `/v1/logs` when missing.        |
+| `layout`                 | `${message}`                   | Layout used to populate the OpenTelemetry `LogRecord.Body` field.            |
 | `serviceName`            | `${appdomain:format=Friendly}` | OpenTelemetry `service.name` resource attribute.                             |
 | `serviceVersion`         | `${assembly-version:Default=}` | OpenTelemetry `service.version` resource attribute.                          |
 | `hostName`               | `${hostname}`                  | OpenTelemetry `host.name` resource attribute.                                |
 | `scopeName`              | `NLog`                         | OpenTelemetry instrumentation scope name.                                    |
-| `layout`                 | `${message}`                   | Layout used for the OTLP log body (message text).                            |
-| `traceId`                | `${activity:property=TraceId}` | Layout used to populate the OTLP LogRecord TraceId field.                    |
-| `spanId`                 | `${activity:property=SpanId}`  | Layout used to populate the OTLP LogRecord SpanId field.                     |
+| `traceId`                | `${activity:property=TraceId}` | Layout used to populate the OpenTelemetry `LogRecord.TraceId` field.         |
+| `spanId`                 | `${activity:property=SpanId}`  | Layout used to populate the OpenTelemetry `LogRecord.SpanId` field.          |
 | `includeEventProperties` | `true`                         | Includes NLog event properties as OpenTelemetry log attributes.              |
 | `sendTimeoutSeconds`     | `30`                           | HTTP request timeout in seconds.                                             |
 
@@ -104,8 +110,6 @@ Additional OpenTelemetry resource attributes can be configured using `resourceAt
 
 </target>
 ```
-
-These attributes are attached to every exported log record.
 
 ## OpenTelemetry Environment Variables
 
