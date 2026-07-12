@@ -74,6 +74,8 @@ Supports the standard OpenTelemetry environment variables as fallback defaults:
 | `traceId`                | `${activity:property=TraceId}` | Layout used to populate the OpenTelemetry `LogRecord.TraceId` field.         |
 | `spanId`                 | `${activity:property=SpanId}`  | Layout used to populate the OpenTelemetry `LogRecord.SpanId` field.          |
 | `includeEventProperties` | `true`                         | Includes NLog event properties as OpenTelemetry log attributes.              |
+| `resourceAttributes`     | OTEL_RESOURCE_ATTRIBUTES       | Additional OpenTelemetry resource attributes.                                |
+| `headers`                | OTEL_EXPORTER_OTLP_HEADERS     | Additional HTTP headers.                                                     |
 | `sendTimeoutSeconds`     | `30`                           | HTTP request timeout in seconds.                                             |
 
 | Batching and Retry       | Default             | Description                                                                       |
