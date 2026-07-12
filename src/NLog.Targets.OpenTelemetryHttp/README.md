@@ -74,8 +74,6 @@ Supports standard OpenTelemetry environment variables as fallback defaults:
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
 | `batchSize`              | `200`               | Maximum number of log events to send in a single HTTP payload.                    |
 | `compress`               | `None`              | Optional payload compression. Supports `None`, `GZip`, and `GZipFast`.            |
-| `lineEnding`             | `LF`                | Line separator used when batching log events.                                     |
-| `batchAsJsonArray`       | `false`             | Wraps batched log events in a JSON array instead of separating them with `lineEnding`. |
 | `maxPayloadSizeBytes`    | `40960`             | Max payload size before splitting into multiple HTTP requests. Remember `BatchSize` |
 | `taskDelayMilliseconds`  | `50`                | Delay before processing queued log events. Higher value can improve batching      |
 | `taskTimeoutSeconds`     | `150`               | Maximum time in seconds before cancellation of HTTP request.                      |
