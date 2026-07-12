@@ -122,7 +122,6 @@ namespace NLog.Targets
 
         /// <summary>
         /// Gets or sets additional OpenTelemetry resource attributes.
-        /// These attributes are included with every exported OTLP log record.
         /// </summary>
         [ArrayParameter(typeof(TargetPropertyWithContext), "resourceattribute")]
         public IList<TargetPropertyWithContext> ResourceAttributes { get; set; } = new List<TargetPropertyWithContext>();
