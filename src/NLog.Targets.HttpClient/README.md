@@ -54,6 +54,7 @@ LogManager.Setup().SetupExtensions(ext => {
 | Parameter                | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
 | `url`                    | Required            | Destination URL for HTTP requests.                                                |
+| `layout`                 | Required            | Layout used to render log events into the HTTP request body.                      |
 | `httpMethod`             | `POST`              | HTTP method used when sending requests.                                           |
 | `contentType`            | `application/json`  | Value of the HTTP Content-Type header.                                            |
 | `keepAlive`              | `true`              | Keeps HTTP connections open for reuse in subsequent requests to improve performance. |
@@ -63,11 +64,11 @@ LogManager.Setup().SetupExtensions(ext => {
 
 | Batching and Retry       | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
-| `compress`               | `None`              | Payload compression mode (`None`, `GZip`, `GZipFast`).                            |
+| `batchSize`              | `1`                 | Maximum number of log events to send in a single HTTP payload.                    |
+| `compress`               | `None`              | Optional payload compression. Supports `None`, `GZip`, and `GZipFast`.            |
 | `lineEnding`             | `LF`                | Line separator used when batching log events.                                     |
 | `batchAsJsonArray`       | `false`             | Wraps batched log events in a JSON array instead of separating them with `lineEnding`. |
 | `maxPayloadSizeBytes`    | `40960`             | Max payload size before splitting into multiple HTTP requests. Remember `BatchSize` |
-| `batchSize`              | `1`                 | Maximum number of log events to send in a single HTTP payload.                    |
 | `taskDelayMilliseconds`  | `1`                 | Delay before processing queued log events. Higher value can improve batching      |
 | `taskTimeoutSeconds`     | `150`               | Maximum time in seconds before cancellation of HTTP request.                      |
 | `retryCount`             | `0`                 | Number of retry attempts for failed write operations.                             |
