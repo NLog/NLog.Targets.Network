@@ -1,4 +1,4 @@
-﻿//
+//
 // Copyright (c) 2004-2024 Jaroslaw Kowalski <jaak@jkowalski.net>, Kim Christensen, Julian Verdurmen
 //
 // All rights reserved.
@@ -123,8 +123,12 @@ namespace NLog.Layouts
         }
 
         /// <summary>
-        /// Gets or sets Splunk Message SourceType-attribute. SourceType can be used hint for choosing Splunk Indexer
+        /// Gets or sets Splunk Message SourceType-attribute, which tells Splunk how to parse and index the event content.
         /// </summary>
+        /// <remarks>
+        /// Default: <c>_json</c> where Splunk automatically extracts fields from the JSON <c>event</c> object.
+        /// When configured as empty value, then Splunk uses the sourcetype configured on the HEC token.
+        /// </remarks>
         public Layout SplunkSourceType
         {
             get
@@ -242,7 +246,7 @@ namespace NLog.Layouts
             Attributes.Add(new JsonAttribute("time", Layout.FromMethod((evt) => ToUnixTimeStamp(evt.TimeStamp))) { Encode = false });
             Attributes.Add(new JsonAttribute("host", "${hostname}"));
             Attributes.Add(new JsonAttribute("source", "${processname}"));
-            Attributes.Add(new JsonAttribute("sourcetype", Layout.Empty));
+            Attributes.Add(new JsonAttribute("sourcetype", "_json"));
             Attributes.Add(new JsonAttribute("index", Layout.Empty));
             Attributes.Add(new JsonAttribute("event", new JsonLayout() { IncludeEventProperties = true }) { Encode = false });
         }

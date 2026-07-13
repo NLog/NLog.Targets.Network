@@ -125,6 +125,38 @@ The target treats the following status codes as transient failures, that can be 
 
 Client-side failures such as `400 Bad Request` are not retried.
 
+## Splunk HTTP Event Collector (HEC)
+
+`SplunkLayout` from the [NLog.Targets.Network](https://www.nuget.org/packages/NLog.Targets.Network) package can be used together with the `HttpClient` target to send events to the Splunk HEC `/services/collector/event` endpoint using newline-delimited JSON (NDJSON).
+
+[SplunkLayout](https://github.com/NLog/NLog/wiki/SplunkLayout) renders the complete HEC event, including the outer `time`, `host`, `source`, `sourcetype`, `index`, and nested `event` fields.
+
+The `Authorization` header is mandatory for Splunk HEC: `Authorization: Splunk <hec-token>`
+
+```xml
+<nlog>
+<extensions>
+    <add assembly="NLog.Targets.HttpClient"/>
+    <add assembly="NLog.Targets.Network"/>
+</extensions>
+<targets>
+    <target xsi:type="HttpClient"
+            name="splunk"
+            url="https://splunk-host:8088/services/collector/event"
+            batchSize="100">
+        <layout xsi:type="SplunkLayout" />
+
+        <!-- Token stored in appsettings.json / app.config / web.config -->
+        <header name="Authorization" layout="Splunk ${configsetting:Splunk.Token}" />
+    </target>
+</targets>
+
+<rules>
+    <logger name="*" minlevel="Info" writeTo="splunk" />
+</rules>
+</nlog>
+```
+
 ## Notes
 
 * The target internally reuses a single `HttpClient` instance to take advantage of connection pooling.
