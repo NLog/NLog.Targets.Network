@@ -550,7 +550,7 @@ namespace NLog.Targets.HttpClient.Tests
 
                     logger.Info("fails");
 
-                    var failedRequests = server.WaitForRequests(1, 1000);
+                    var failedRequests = server.WaitForRequests(1);
                     Assert.Single(failedRequests);
                     Assert.Equal("fails", failedRequests[0].Body);
                     Assert.Equal(1, server.RequestCount);
@@ -560,7 +560,7 @@ namespace NLog.Targets.HttpClient.Tests
                     var stopwatch = Stopwatch.StartNew();
                     logger.Info("succeeds");
 
-                    var requests = server.WaitForRequests(2, 500);
+                    var requests = server.WaitForRequests(2);
                     stopwatch.Stop();
 
                     Assert.Equal(2, requests.Count);
