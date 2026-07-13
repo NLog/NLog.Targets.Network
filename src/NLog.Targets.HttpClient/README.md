@@ -145,12 +145,9 @@ The `Authorization` header is mandatory for Splunk HEC: `Authorization: Splunk <
             url="https://splunk-host:8088/services/collector/event"
             batchSize="100">
         <layout xsi:type="SplunkLayout" />
-
-        <!-- Token stored in appsettings.json / app.config / web.config -->
         <header name="Authorization" layout="Splunk ${configsetting:Splunk.Token}" />
     </target>
 </targets>
-
 <rules>
     <logger name="*" minlevel="Info" writeTo="splunk" />
 </rules>
