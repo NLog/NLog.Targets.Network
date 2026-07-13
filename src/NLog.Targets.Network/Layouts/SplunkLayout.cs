@@ -147,6 +147,9 @@ namespace NLog.Layouts
         /// <summary>
         /// Gets or sets Splunk Message Index-attribute, that controls which event data is to be indexed.
         /// </summary>
+        /// <remarks>
+        /// When configured as empty value, then Splunk uses the default index configured on the HEC token.
+        /// </remarks>
         public Layout SplunkIndex
         {
             get
