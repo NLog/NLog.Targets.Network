@@ -265,7 +265,7 @@ namespace NLog.Targets.HttpClient.Tests
                         Url = $"${{gdc:item={gdcKey}}}/logs",
                         Layout = "${message}",
                         RetryCount = 0,
-                        TaskDelayMilliseconds = 1,
+                        TaskDelayMilliseconds = 10,
                     };
 
                     using (var logFactory = BuildLogFactory(target))
@@ -308,8 +308,7 @@ namespace NLog.Targets.HttpClient.Tests
                     Layout = "${message}",
                     RetryCount = 0,
                     RetryDelayMilliseconds = 10,
-                    SendTimeoutSeconds = 1,
-                    TaskDelayMilliseconds = 1,
+                    TaskDelayMilliseconds = 10,
                 };
 
                 using (var logFactory = BuildLogFactory(target))
@@ -325,7 +324,7 @@ namespace NLog.Targets.HttpClient.Tests
                     Assert.Equal(0, server.RequestCount);
                     logger.Info("succeeds");
 
-                    var requests = server.WaitForRequests(1, 10000);
+                    var requests = server.WaitForRequests(1);
                     Assert.Single(requests);
                     Assert.Equal("succeeds", requests[0].Body);
                 }

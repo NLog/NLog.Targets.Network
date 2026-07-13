@@ -36,10 +36,6 @@ namespace NLog.Targets
     using System;
     using System.Collections.Generic;
     using System.IO;
-    using System.IO.Compression;
-    using System.Net.Http;
-    using System.Threading;
-    using System.Threading.Tasks;
     using NLog.Config;
     using NLog.Internal;
     using NLog.Layouts;
@@ -52,17 +48,6 @@ namespace NLog.Targets
     /// The target serializes log events into the OTLP ExportLogsServiceRequest protobuf format
     /// and sends them via HTTP POST. Typical endpoint URL is <c>http://localhost:4318/v1/logs</c>.
     /// </para>
-    /// <para>
-    /// Supports standard OpenTelemetry environment variables as fallback defaults:
-    /// <c>OTEL_EXPORTER_OTLP_ENDPOINT</c>, <c>OTEL_EXPORTER_OTLP_LOGS_ENDPOINT</c>,
-    /// <c>OTEL_EXPORTER_OTLP_HEADERS</c>, <c>OTEL_EXPORTER_OTLP_LOGS_HEADERS</c>,
-    /// <c>OTEL_EXPORTER_OTLP_COMPRESSION</c>, <c>OTEL_EXPORTER_OTLP_LOGS_COMPRESSION</c>,
-    /// <c>OTEL_EXPORTER_OTLP_TIMEOUT</c>, <c>OTEL_EXPORTER_OTLP_LOGS_TIMEOUT</c>,
-    /// <c>OTEL_SERVICE_NAME</c>, <c>OTEL_RESOURCE_ATTRIBUTES</c>.
-    /// Environment variables are resolved using NLog <c>${environment}</c> layout renderer.
-    /// </para>
-    /// <a href="https://opentelemetry.io/docs/specs/otlp/#otlphttp">See OTLP/HTTP Specification</a>
-    /// <a href="https://opentelemetry.io/docs/specs/otel/protocol/exporter/">See OTLP Exporter Configuration</a>
     /// </remarks>
     [Target("OpenTelemetry")]
     [Target("OpenTelemetryHttp")]
@@ -78,9 +63,6 @@ namespace NLog.Targets
 
         private OtlpProtobufSerializer _serializer = new OtlpProtobufSerializer();
         private KeyValuePair<byte[], byte[]> _cachedResourcePayload;
-        private Uri? _logsUrl;
-        private readonly Stack<MemoryStream> _memoryStreamPool = new Stack<MemoryStream>();
-        private List<MemoryStream>? _activeChunkStreams = new List<MemoryStream>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="OpenTelemetryHttpTarget"/> class.
@@ -147,103 +129,49 @@ namespace NLog.Targets
                 TraceId = TraceId,
                 SpanId = SpanId,
             };
-            _logsUrl = null;
             _cachedResourcePayload = default;
             base.InitializeTarget();
         }
 
         /// <inheritdoc />
-        protected override async Task WriteAsyncTask(IList<LogEventInfo> logEvents, CancellationToken cancellationToken)
-        {
-            if (logEvents.Count == 0)
-                return;
-
-            if (_logsUrl is null)
-            {
-                var urlStr = RenderLogEvent(Url, logEvents[0]);
-                if (!urlStr.EndsWith("/logs/", StringComparison.OrdinalIgnoreCase) && !urlStr.EndsWith("/logs", StringComparison.OrdinalIgnoreCase))
-                    urlStr = urlStr.TrimEnd('/') + "/v1/logs";
-                if (!Uri.TryCreate(urlStr, UriKind.Absolute, out _logsUrl))
-                    NLog.Common.InternalLogger.Warn("{0}: Invalid OTLP endpoint URL: {1}", this, urlStr);
-            }
-
-            var chunks = Interlocked.Exchange(ref _activeChunkStreams, null) ?? new List<MemoryStream>();
-            try
-            {
-                if (Compress != HttpCompressionType.None)
-                    await WriteGZipCompressedAsync(logEvents, chunks, cancellationToken).ConfigureAwait(false);
-                else
-                    await WriteRawAsync(logEvents, chunks, cancellationToken).ConfigureAwait(false);
-            }
-            finally
-            {
-                for (int i = 0; i < chunks.Count; i++)
-                    ReturnMemoryStream(chunks[i]);
-                chunks.Clear();
-                Interlocked.Exchange(ref _activeChunkStreams, chunks);
-            }
-        }
-
-        private async Task WriteRawAsync(IList<LogEventInfo> logEvents, List<MemoryStream> chunks, CancellationToken cancellationToken)
-        {
-            List<Task<HttpResponseMessage>>? pendingTasks = null;
-            var output = RentMemoryStream();
-            chunks.Add(output);
-
-            var batch = CreateNewBatch(output);
-
-            for (int i = 0; i < logEvents.Count; i++)
-            {
-                var logEvent = logEvents[i];
-
-                WriteLogRecord(ref batch, logEvent);
-
-                if (output.Length >= MaxPayloadSizeBytes && i < logEvents.Count - 1)
-                {
-                    batch.Dispose();    //  Complete batch, and flush to output stream
-                    var sendTask = HttpClientSendAsync(_logsUrl, BuildHttpContent(output), cancellationToken);
-
-                    pendingTasks ??= new List<Task<HttpResponseMessage>>();
-                    pendingTasks.Add(sendTask);
-
-                    output = RentMemoryStream();
-                    chunks.Add(output);
-                    batch = CreateNewBatch(output);
-                }
-            }
-
-            batch.Dispose();    //  Complete batch, and flush to output stream
-            await SendLastChunkAndAwaitPendingAsync(BuildHttpContent(output), pendingTasks, cancellationToken).ConfigureAwait(false);
-        }
-
-        private OtlpBatchBuilder CreateNewBatch(MemoryStream stream)
+        protected override int SerializePayload(IList<LogEventInfo> logEvents, MemoryStream output)
         {
             if (_cachedResourcePayload.Key is null)
             {
-                var firstEvent = LogEventInfo.CreateNullEvent();
-                _cachedResourcePayload = OtlpBatchBuilder.CreateResourcePayload(ScopeName, GetResourceAttributes(firstEvent));
+                var firstEvent = logEvents.Count > 0 ? logEvents[0] : LogEventInfo.CreateNullEvent();
+                _cachedResourcePayload = OtlpBatchBuilder.CreateResourcePayload(
+                    ScopeName,
+                    GetResourceAttributes(firstEvent));
             }
 
-            var batch = _serializer.BeginBatch(stream);
-            batch.AddResourcePayload(_cachedResourcePayload);
-            return batch;
+            using (var batch = _serializer.BeginBatch(output))
+            {
+                batch.AddResourcePayload(_cachedResourcePayload);
+
+                for (int i = 0; i < logEvents.Count; i++)
+                {
+                    var logEvent = logEvents[i];
+
+                    var logMessage = RenderLogEvent(Layout, logEvent);
+                    var properties = GetLogEventProperties(logEvent);
+                    if (properties is null && (IncludeEventProperties && logEvent.HasProperties))
+                    {
+                        batch.AddLogRecord(logEvent, logMessage, logEvent.Properties);
+                    }
+                    else
+                    {
+                        batch.AddLogRecord(logEvent, logMessage, properties);
+                    }
+
+                    if (output.Length >= MaxPayloadSizeBytes)
+                        return i + 1;   // consumed and included this LogEvent
+                }
+            }
+
+            return logEvents.Count;
         }
 
-        private void WriteLogRecord(ref OtlpBatchBuilder batch, LogEventInfo logEvent)
-        {
-            var logMessage = RenderLogEvent(Layout, logEvent);
-            var properties = GetLogEventProperties(logEvent);
-            if (properties is null && (IncludeEventProperties && logEvent.HasProperties))
-            {
-                batch.AddLogRecord(logEvent, logMessage, logEvent.Properties);
-            }
-            else
-            {
-                batch.AddLogRecord(logEvent, logMessage, properties);
-            }
-        }
-
-        IEnumerable<KeyValuePair<string, object?>>? GetLogEventProperties(LogEventInfo logEvent)
+        private IEnumerable<KeyValuePair<string, object?>>? GetLogEventProperties(LogEventInfo logEvent)
         {
             if (IncludeScopeProperties || IncludeGdc || (ContextProperties.Count > 0 && IncludeEventProperties && logEvent.HasProperties))
             {
@@ -271,7 +199,7 @@ namespace NLog.Targets
             }
         }
 
-        IEnumerable<KeyValuePair<string, object>> GetResourceAttributes(LogEventInfo firstEvent)
+        private IEnumerable<KeyValuePair<string, object>> GetResourceAttributes(LogEventInfo firstEvent)
         {
             Layout? serviceNameLayout = ServiceName;
             Layout? serviceVersionLayout = ServiceVersion;
@@ -371,120 +299,8 @@ namespace NLog.Targets
             else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Create("ANDROID")))
                 return "android";
             else
-                return "unknown";
+                return "other";
         }
-
-        private async Task SendLastChunkAndAwaitPendingAsync(HttpContent lastContent, List<Task<HttpResponseMessage>>? pendingTasks, CancellationToken cancellationToken)
-        {
-            using var lastResponse = await HttpClientSendAsync(_logsUrl, lastContent, cancellationToken).ConfigureAwait(false);
-            if (pendingTasks != null)
-            {
-                if (pendingTasks.Count == 1)
-                {
-                    using var response = await pendingTasks[0].ConfigureAwait(false);
-                }
-                else
-                {
-                    var responses = await Task.WhenAll(pendingTasks).ConfigureAwait(false);
-                    foreach (var response in responses)
-                        response?.Dispose();
-                }
-            }
-        }
-
-        private static ByteArrayContent BuildHttpContent(MemoryStream output)
-        {
-            return new ByteArrayContent(output.GetBuffer(), 0, (int)output.Length);
-        }
-
-        private async Task WriteGZipCompressedAsync(
-            IList<LogEventInfo> logEvents,
-            List<MemoryStream> chunks,
-            CancellationToken cancellationToken)
-        {
-            List<Task<HttpResponseMessage>>? pendingTasks = null;
-            var batchStream = RentMemoryStream();
-            chunks.Add(batchStream);
-
-            try
-            {
-                var batch = CreateNewBatch(batchStream);
-
-                for (int i = 0; i < logEvents.Count; i++)
-                {
-                    WriteLogRecord(ref batch, logEvents[i]);
-
-                    if (batchStream.Length >= MaxPayloadSizeBytes && i < logEvents.Count - 1)
-                    {
-                        batch.Dispose();
-
-                        var compressedStream = WriteGZipCompressed(batchStream);
-                        chunks.Add(compressedStream);
-                        pendingTasks ??= new List<Task<HttpResponseMessage>>();
-                        pendingTasks.Add(HttpClientSendAsync(_logsUrl, BuildGzipContent(compressedStream), cancellationToken));
-
-                        batchStream = RentMemoryStream();
-                        chunks.Add(batchStream);
-                        batch = CreateNewBatch(batchStream);
-                    }
-                }
-
-                batch.Dispose();
-
-                var finalCompressed = WriteGZipCompressed(batchStream);
-                chunks.Add(finalCompressed);
-
-                await SendLastChunkAndAwaitPendingAsync(
-                    BuildGzipContent(finalCompressed),
-                    pendingTasks,
-                    cancellationToken).ConfigureAwait(false);
-            }
-            finally
-            {
-                ReturnMemoryStream(batchStream);
-            }
-        }
-
-        private MemoryStream WriteGZipCompressed(MemoryStream uncompressed)
-        {
-            var compressedOutput = RentMemoryStream();
-            var compressionLevel = Compress == HttpCompressionType.GZipFast ? CompressionLevel.Fastest : CompressionLevel.Optimal;
-            using (var gzip = new GZipStream(compressedOutput, compressionLevel, leaveOpen: true))
-            {
-                gzip.Write(uncompressed.GetBuffer(), 0, (int)uncompressed.Length);
-            }
-            compressedOutput.Position = 0;
-            return compressedOutput;
-        }
-
-        private static HttpContent BuildGzipContent(MemoryStream compressedPayload)
-        {
-            var content = new ByteArrayContent(compressedPayload.GetBuffer(), 0, (int)compressedPayload.Length);
-            content.Headers.ContentEncoding.Add("gzip");
-            return content;
-        }
-
-        private MemoryStream RentMemoryStream()
-        {
-            lock (_memoryStreamPool)
-                return _memoryStreamPool.Count > 0 ? _memoryStreamPool.Pop() : new MemoryStream(4096);
-        }
-
-        private void ReturnMemoryStream(MemoryStream stream)
-        {
-            if (stream.Capacity < 1_000_000)
-            {
-                stream.Position = 0;
-                stream.SetLength(0);
-                lock (_memoryStreamPool)
-                    _memoryStreamPool.Push(stream);
-            }
-            else
-            {
-                stream.Dispose();
-            }
-        }
-
 
         #region OTLP Environment Variable Support
 

@@ -60,7 +60,7 @@ namespace NLog.Targets
         private static readonly Encoding _utf8Encoding = new UTF8Encoding(false);   // No PreAmble BOM
         private readonly char[] _reusableEncodingBuffer = new char[40 * 1024];  // Avoid large-object-heap
         private readonly StringBuilder _reusableEncodingBuilder = new StringBuilder();
-        private MemoryStream _reusableMemoryStream = new MemoryStream(4096);
+        private readonly Stack<MemoryStream> _memoryStreamPool = new Stack<MemoryStream>();
         private volatile HttpClient? _httpClient;
         private const int _httpClientLifeTimeTicks = 5 * 60 * 1000;
         private volatile int _httpClientCreatedTicks = 0;
@@ -364,51 +364,39 @@ namespace NLog.Targets
         /// <inheritdoc />
         protected override async Task WriteAsyncTask(IList<LogEventInfo> logEvents, CancellationToken cancellationToken)
         {
-            if (logEvents.Count == 0)
-                return;
+            int startIndex = 0;
 
-            var output = _reusableMemoryStream;
-            try
+            while (startIndex < logEvents.Count)
             {
-                int lastBatchSize = 0;
-                var baseUrl = RenderBaseUrl(logEvents[0]);
-                var httpContent = Compress == HttpCompressionType.None ? BuildChunk(output, logEvents, 0, out lastBatchSize) : GZipCompressChunk(output, logEvents, 0, out lastBatchSize);
+                IList<LogEventInfo> batch = startIndex == 0
+                    ? logEvents
+                    : new LogEventBatch(logEvents, startIndex, logEvents.Count - startIndex);
+
+                var output = RentMemoryStream();
+                MemoryStream? compressed = null;
+
+                try
                 {
-                    using var _ = await HttpClientSendAsync(baseUrl, httpContent, cancellationToken).ConfigureAwait(false);
+                    int consumed = SerializePayload(batch, output);
+                    if (consumed <= 0)
+                        throw new NLogRuntimeException($"{GetType().Name}.SerializePayload must consume at least one LogEventInfo.");
+
+                    using (var httpContent = CreateHttpContent(output, out compressed))
+                    {
+                        var url = RenderBaseUrl(batch[0]);
+                        await HttpClientSendAsync(url, httpContent, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    startIndex += consumed;
                 }
-                if (lastBatchSize != logEvents.Count)
+                finally
                 {
-                    await HttpSendBatchesAsync(baseUrl, output, lastBatchSize, logEvents, cancellationToken).ConfigureAwait(false);
+                    ReturnMemoryStream(output);
+                    if (compressed != null)
+                    {
+                        ReturnMemoryStream(compressed);
+                    }
                 }
-            }
-            catch
-            {
-                ResetReusableCompressStream(output);
-                throw;
-            }
-
-            if (output.Capacity > 1024 * 1024)
-            {
-                ResetReusableCompressStream(output);
-            }
-        }
-
-        private void ResetReusableCompressStream(MemoryStream oldStream)
-        {
-            if (ReferenceEquals(_reusableMemoryStream, oldStream))
-                _reusableMemoryStream = new MemoryStream(4096);
-            oldStream.Dispose();
-        }
-
-        private async Task HttpSendBatchesAsync(Uri baseUrl, MemoryStream output, int lastBatchSize, IList<LogEventInfo> logEvents, CancellationToken cancellationToken)
-        {
-            int batchStartIndex = lastBatchSize;
-            while (batchStartIndex < logEvents.Count)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var httpContent = Compress == HttpCompressionType.None ? BuildChunk(output, logEvents, batchStartIndex, out lastBatchSize) : GZipCompressChunk(output, logEvents, batchStartIndex, out lastBatchSize);
-                using var _ = await HttpClientSendAsync(baseUrl, httpContent, cancellationToken).ConfigureAwait(false);
-                batchStartIndex += lastBatchSize;
             }
         }
 
@@ -470,12 +458,17 @@ namespace NLog.Targets
             }
         }
 
-        private HttpContent BuildChunk(MemoryStream output, IList<LogEventInfo> logEvents, int startIndex, out int batchSize)
+        /// <summary>
+        /// Serializes log events into the HTTP request payload.
+        /// </summary>
+        /// <param name="logEvents">The log events to serialize.</param>
+        /// <param name="output">The destination stream for the serialized payload. The stream is owned by <see cref="HttpClientTarget"/> and must not be disposed.</param>
+        /// <returns>The number of log events consumed and serialized into the payload.</returns>
+        protected virtual int SerializePayload(IList<LogEventInfo> logEvents, MemoryStream output)
         {
             var newlineDelimiter = BatchAsJsonArray ? ", " : LineEnding.NewLineCharacters;
-            var endIndex = logEvents.Count;
 
-            batchSize = 1;
+            int consumed = 0;
 
             lock (_reusableEncodingBuilder)
             {
@@ -487,109 +480,72 @@ namespace NLog.Targets
                     if (BatchAsJsonArray)
                         sb.Append('[');
 
-                    Layout.Render(logEvents[startIndex], sb);
-                    if (sb.Length < MaxPayloadSizeBytes)
+                    for (int i = 0; i < logEvents.Count; i++)
                     {
-                        batchSize = endIndex - startIndex;
-                        for (int i = startIndex + 1; i < endIndex; ++i)
-                        {
-                            var orgLength = sb.Length;
+                        if (consumed > 0)
                             sb.Append(newlineDelimiter);
-                            Layout.Render(logEvents[i], sb);
-                            if (sb.Length >= MaxPayloadSizeBytes)
-                            {
-                                sb.Length = orgLength;   // Remove last rendered log that caused overflow
-                                batchSize = i - startIndex;
-                                break;
-                            }
-                        }
+
+                        Layout.Render(logEvents[i], sb);
+
+                        consumed++;
+                        if (sb.Length >= MaxPayloadSizeBytes)
+                            break;
                     }
 
                     if (BatchAsJsonArray)
                         sb.Append(']');
 
                     EncodePayload(_utf8Encoding, sb, output);
-                    return new ByteArrayContent(output.GetBuffer(), 0, (int)output.Position);
+                    return consumed;
                 }
                 finally
                 {
                     if (_reusableEncodingBuilder.Length > _reusableEncodingBuffer.Length)
-                        _reusableEncodingBuilder.Remove(0, _reusableEncodingBuilder.Length - 1);  // Attempt soft clear that skips Large-Object-Heap (LOH) re-allocation
+                        _reusableEncodingBuilder.Remove(0, _reusableEncodingBuilder.Length - 1);    // Attempt soft clear that skips Large-Object-Heap (LOH) re-allocation
+
                     _reusableEncodingBuilder.Length = 0;
                 }
             }
         }
 
-        private HttpContent GZipCompressChunk(MemoryStream output, IList<LogEventInfo> logEvents, int startIndex, out int batchSize)
+        private HttpContent CreateHttpContent(MemoryStream output, out MemoryStream? compressed)
         {
-            var newlineDelimiter = BatchAsJsonArray ? ", " : LineEnding.NewLineCharacters;
-            var endIndex = logEvents.Count;
-            batchSize = endIndex - startIndex;
+            compressed = null;
+            if (Compress == HttpCompressionType.None)
+                return new ByteArrayContent(output.GetBuffer(), 0, (int)output.Length);
 
-            output.Position = 0;
-            output.SetLength(0);
-            var compressionLevel = Compress == HttpCompressionType.GZipFast ? CompressionLevel.Fastest : CompressionLevel.Optimal;
-
-            using (var gzipStream = new GZipStream(output, compressionLevel, leaveOpen: true))
-            using (var streamWriter = new StreamWriter(gzipStream, _utf8Encoding, 1024, leaveOpen: true))
+            compressed = RentMemoryStream();
+            using (var gzip = new GZipStream(compressed,
+                Compress == HttpCompressionType.GZipFast ? CompressionLevel.Fastest : CompressionLevel.Optimal,
+                leaveOpen: true))
             {
-                if (BatchAsJsonArray)
-                    streamWriter.Write('[');
-
-                for (int i = startIndex; i < endIndex; ++i)
-                {
-                    if (i > startIndex)
-                    {
-                        if (output.Position >= MaxPayloadSizeBytes)
-                        {
-                            batchSize = i - startIndex;
-                            break;
-                        }
-                        streamWriter.Write(newlineDelimiter);
-                    }
-
-                    RenderLogEventForChunk(logEvents[i], streamWriter);
-                }
-
-                if (BatchAsJsonArray)
-                    streamWriter.Write(']');
+                output.Position = 0;
+                output.CopyTo(gzip);
             }
 
-            var content = new ByteArrayContent(output.GetBuffer(), 0, (int)output.Position);
+            var content = new ByteArrayContent(compressed.GetBuffer(), 0, (int)compressed.Length);
             content.Headers.ContentEncoding.Add("gzip");
             return content;
         }
 
-        private void RenderLogEventForChunk(LogEventInfo logEvent, StreamWriter streamWriter)
+        private MemoryStream RentMemoryStream()
         {
-            lock (_reusableEncodingBuilder)
+            lock (_memoryStreamPool)
+                return _memoryStreamPool.Count > 0 ? _memoryStreamPool.Pop() : new MemoryStream(4096);
+        }
+
+        private void ReturnMemoryStream(MemoryStream stream)
+        {
+            if (stream.Capacity < 1_000_000)
             {
-                try
-                {
-                    var sb = _reusableEncodingBuilder;
-                    sb.Length = 0;
-
-                    Layout.Render(logEvent, sb);
-
-                    if (sb.Length < _reusableEncodingBuffer.Length)
-                    {
-                        lock (_reusableEncodingBuffer)
-                        {
-                            sb.CopyTo(0, _reusableEncodingBuffer, 0, sb.Length);
-                            streamWriter.Write(_reusableEncodingBuffer, 0, sb.Length);
-                        }
-                    }
-                    else
-                    {
-                        streamWriter.Write(sb.ToString());
-                    }
-                }
-                finally
-                {
-                    if (_reusableEncodingBuilder.Length > _reusableEncodingBuffer.Length)
-                        _reusableEncodingBuilder.Remove(0, _reusableEncodingBuilder.Length - 1);  // Attempt soft clear that skips Large-Object-Heap (LOH) re-allocation
-                    _reusableEncodingBuilder.Length = 0;
-                }
+                stream.Position = 0;
+                stream.SetLength(0);
+                lock (_memoryStreamPool)
+                    _memoryStreamPool.Push(stream);
+            }
+            else
+            {
+                stream.Dispose();
             }
         }
 
@@ -825,6 +781,54 @@ namespace NLog.Targets
             }
 
             return proxy;
+        }
+
+        private sealed class LogEventBatch : IList<LogEventInfo>
+        {
+            private readonly IList<LogEventInfo> _source;
+            private readonly int _offset;
+            public int Count { get; }
+            public bool IsReadOnly => true;
+
+            public LogEventBatch(IList<LogEventInfo> source, int offset, int count)
+            {
+                _source = source;
+                _offset = offset;
+                Count = count;
+            }
+
+            public LogEventInfo this[int index]
+            {
+                get => _source[_offset + index];
+                set => _source[_offset + index] = value;
+            }
+
+            public int IndexOf(LogEventInfo item)
+            {
+                for (int i = 0; i < Count; i++)
+                {
+                    if (ReferenceEquals(this[i], item))
+                        return i;
+                }
+                return -1;
+            }
+            public bool Contains(LogEventInfo item) => IndexOf(item) >= 0;
+            public void CopyTo(LogEventInfo[] array, int arrayIndex)
+            {
+                for (int i = 0; i < Count; i++)
+                    array[arrayIndex + i] = this[i];
+            }
+            public void Add(LogEventInfo item) => throw new NotSupportedException();
+            public void Clear() => throw new NotSupportedException();
+            public void Insert(int index, LogEventInfo item) => throw new NotSupportedException();
+            public bool Remove(LogEventInfo item) => throw new NotSupportedException();
+            public void RemoveAt(int index) => throw new NotSupportedException();
+            public IEnumerator<LogEventInfo> GetEnumerator()
+            {
+                for (int i = 0; i < Count; i++)
+                    yield return this[i];
+            }
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
         }
     }
 }
