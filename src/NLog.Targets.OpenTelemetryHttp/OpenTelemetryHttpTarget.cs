@@ -134,7 +134,7 @@ namespace NLog.Targets
         }
 
         /// <inheritdoc />
-        protected override int SerializePayload(IList<LogEventInfo> logEvents, MemoryStream output)
+        protected override int WriteHttpRequestBody(IList<LogEventInfo> logEvents, MemoryStream output)
         {
             if (_cachedResourcePayload.Key is null)
             {

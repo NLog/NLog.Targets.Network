@@ -377,14 +377,14 @@ namespace NLog.Targets
 
                 try
                 {
-                    int consumed = SerializePayload(batch, output);
+                    int consumed = WriteHttpRequestBody(batch, output);
                     if (consumed <= 0)
-                        throw new NLogRuntimeException($"{GetType().Name}.SerializePayload must consume at least one LogEventInfo.");
+                        throw new NLogRuntimeException($"{GetType().Name}.WriteHttpRequest must consume at least one LogEventInfo.");
 
                     using (var httpContent = CreateHttpContent(output, out compressed))
                     {
                         var url = RenderBaseUrl(batch[0]);
-                        await HttpClientSendAsync(url, httpContent, cancellationToken).ConfigureAwait(false);
+                        using var _ = await HttpClientSendAsync(url, httpContent, cancellationToken).ConfigureAwait(false);
                     }
 
                     startIndex += consumed;
@@ -459,12 +459,12 @@ namespace NLog.Targets
         }
 
         /// <summary>
-        /// Serializes log events into the HTTP request payload.
+        /// Serializes log events into the HTTP request body.
         /// </summary>
         /// <param name="logEvents">The log events to serialize.</param>
-        /// <param name="output">The destination stream for the serialized payload. The stream is owned by <see cref="HttpClientTarget"/> and must not be disposed.</param>
-        /// <returns>The number of log events consumed and serialized into the payload.</returns>
-        protected virtual int SerializePayload(IList<LogEventInfo> logEvents, MemoryStream output)
+        /// <param name="output">The destination stream for the serialized HTTP request body. The stream is owned by <see cref="HttpClientTarget"/> and must not be disposed.</param>
+        /// <returns>The number of log events serialized into the HTTP request body.</returns>
+        protected virtual int WriteHttpRequestBody(IList<LogEventInfo> logEvents, MemoryStream output)
         {
             var newlineDelimiter = BatchAsJsonArray ? ", " : LineEnding.NewLineCharacters;
 
@@ -482,7 +482,7 @@ namespace NLog.Targets
 
                     for (int i = 0; i < logEvents.Count; i++)
                     {
-                        if (consumed > 0)
+                        if (consumed != 0)
                             sb.Append(newlineDelimiter);
 
                         Layout.Render(logEvents[i], sb);

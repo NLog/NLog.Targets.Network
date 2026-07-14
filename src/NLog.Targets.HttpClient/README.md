@@ -53,39 +53,39 @@ LogManager.Setup().SetupExtensions(ext => {
 
 | Parameter                | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
-| `url`                    | Required            | Destination URL for HTTP requests.                                                |
-| `layout`                 | Required            | Layout used to render log events into the HTTP request body.                      |
-| `httpMethod`             | `POST`              | HTTP method used when sending requests.                                           |
-| `contentType`            | `application/json`  | Value of the HTTP Content-Type header.                                            |
-| `keepAlive`              | `true`              | Keeps HTTP connections open for reuse in subsequent requests to improve performance. |
-| `expect100Continue`      | `false`             | Enables the HTTP Expect: 100-continue handshake before sending the request body.  |
-| `sendTimeoutSeconds`     | `30`                | HTTP request timeout in seconds.                                                  |
-| `headers`                |                     | Additional HTTP request headers.                                                  |
+| _url_                    | Required            | Destination URL for HTTP requests.                                                |
+| _layout_                 | Required            | Layout used to render log events into the HTTP request body.                      |
+| _httpMethod_             | `POST`              | HTTP method used when sending requests.                                           |
+| _contentType_            | `application/json`  | Value of the HTTP Content-Type header.                                            |
+| _keepAlive_              | `true`              | Keeps HTTP connections open for reuse in subsequent requests to improve performance. |
+| _expect100Continue_      | `false`             | Enables the HTTP Expect: 100-continue handshake before sending the request body.  |
+| _sendTimeoutSeconds_     | `30`                | HTTP request timeout in seconds.                                                  |
+| _headers_                |                     | Additional HTTP request headers.                                                  |
 
 | Batching and Retry       | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
-| `batchSize`              | `1`                 | Maximum number of log events to send in a single HTTP payload.                    |
-| `compress`               | `None`              | Optional payload compression. Supports `None`, `GZip`, and `GZipFast`.            |
-| `lineEnding`             | `LF`                | Line separator used when batching log events.                                     |
-| `batchAsJsonArray`       | `false`             | Wraps batched log events in a JSON array instead of separating them with `lineEnding`. |
-| `maxPayloadSizeBytes`    | `40960`             | Max payload size before splitting into multiple HTTP requests. Remember `BatchSize` |
-| `taskDelayMilliseconds`  | `1`                 | Delay before processing queued log events. Higher value can improve batching      |
-| `taskTimeoutSeconds`     | `150`               | Maximum time in seconds before cancellation of HTTP request.                      |
-| `retryCount`             | `0`                 | Number of retry attempts for failed write operations.                             |
-| `retryDelayMilliseconds` | `2500`              | Initial delay before retry after failed request. Delay doubles for each retry.    |
-| `queueLimit`             | `10000`             | Maximum number of pending log events allowed in the internal queue.               |
-| `overflowAction`         | `Discard`           | Action taken when the internal request queue reaches its limit.                   |
+| _batchSize_              | `1`                 | Maximum number of log events to send in a single HTTP payload.                    |
+| _compress_               | `None`              | Optional payload compression. Supports `None`, `GZip`, and `GZipFast`.            |
+| _lineEnding_             | `LF`                | Line separator used when batching log events.                                     |
+| _batchAsJsonArray_       | `false`             | Wraps batched log events in a JSON array instead of separating them with `lineEnding`. |
+| _maxPayloadSizeBytes_    | `40960`             | Max payload size before splitting into multiple HTTP requests. Remember `BatchSize` |
+| _taskDelayMilliseconds_  | `1`                 | Delay before processing queued log events. Higher value can improve batching      |
+| _taskTimeoutSeconds_     | `150`               | Maximum time in seconds before cancellation of HTTP request.                      |
+| _retryCount_             | `0`                 | Number of retry attempts for failed write operations.                             |
+| _retryDelayMilliseconds_ | `2500`              | Initial delay before retry after failed request. Delay doubles for each retry.    |
+| _queueLimit_             | `10000`             | Maximum number of pending log events allowed in the internal queue.               |
+| _overflowAction_         | `Discard`           | Action taken when the internal request queue reaches its limit.                   |
 
 
 | Authentication and Security | Default          | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
-| `networkUserName`        |                     | Username for HTTP authentication. `networkUserName = ""` means default NTLM credentials. |
-| `networkPassword`        |                     | Password for HTTP authentication.                                                 |
-| `sslCertificateFile`     |                     | Client certificate file used for mutual TLS authentication.                       |
-| `sslCertificatePassword` |                     | Password for the client certificate.                                              |
-| `proxyUrl`               |                     | Proxy server URL.                                                                 |
-| `proxyUser`              |                     | Proxy authentication username.                                                    |
-| `proxyPassword`          |                     | Proxy authentication password.                                                    |
+| _networkUserName_        |                     | Username for HTTP authentication. `_networkUserName = ""` means default NTLM credentials. |
+| _networkPassword_        |                     | Password for HTTP authentication.                                                 |
+| _sslCertificateFile_     |                     | Client certificate file used for mutual TLS authentication.                       |
+| _sslCertificatePassword_ |                     | Password for the client certificate.                                              |
+| _proxyUrl_               |                     | Proxy server URL.                                                                 |
+| _proxyUser_              |                     | Proxy authentication username.                                                    |
+| _proxyPassword_          |                     | Proxy authentication password.                                                    |
 
 
 ## Custom Headers
