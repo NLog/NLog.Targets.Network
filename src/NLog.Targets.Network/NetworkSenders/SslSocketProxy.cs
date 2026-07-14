@@ -107,7 +107,7 @@ namespace NLog.Internal.NetworkSenders
             }
         }
 
-        private void SocketProxyConnectCompleted(object sender, SocketAsyncEventArgs e)
+        private void SocketProxyConnectCompleted(object? sender, SocketAsyncEventArgs e)
         {
             var proxyArgs = e.UserToken as TcpNetworkSender.MySocketAsyncEventArgs;
             if (e.SocketError != SocketError.Success)
@@ -178,7 +178,7 @@ namespace NLog.Internal.NetworkSenders
             }
         }
 
-        private bool UserCertificateValidationCallback(object sender, object certificate, object chain, SslPolicyErrors sslPolicyErrors)
+        private bool UserCertificateValidationCallback(object? sender, object? certificate, object? chain, SslPolicyErrors sslPolicyErrors)
         {
             if (sslPolicyErrors == SslPolicyErrors.None)
                 return true;
@@ -192,7 +192,7 @@ namespace NLog.Internal.NetworkSenders
 
         public bool SendAsync(SocketAsyncEventArgs args)
         {
-            _sslStream?.BeginWrite(args.Buffer, args.Offset, args.Count, _sendCompleted, args);
+            _sslStream?.BeginWrite(args.Buffer!, args.Offset, args.Count, _sendCompleted, args);
             return true;
         }
 

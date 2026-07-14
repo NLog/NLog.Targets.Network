@@ -603,7 +603,7 @@ namespace NLog.Targets
             int nowTickCount = Environment.TickCount;
             if (!HttpClientLifeTimeExpired(nowTickCount, _httpClientLifeTimeTicks) && oldHttpClient != null)
             {
-                if (baseUrl is null || oldHttpClient.BaseAddress.Equals(baseUrl))
+                if (baseUrl is null || oldHttpClient.BaseAddress?.Equals(baseUrl) == true)
                     return oldHttpClient;
             }
 
@@ -611,7 +611,7 @@ namespace NLog.Targets
             lock (_reusableEncodingBuffer)
             {
                 oldHttpClient = _httpClient;
-                if (!HttpClientLifeTimeExpired(nowTickCount, _httpClientLifeTimeTicks) && oldHttpClient != null && (baseUrl is null || oldHttpClient.BaseAddress.Equals(baseUrl)))
+                if (!HttpClientLifeTimeExpired(nowTickCount, _httpClientLifeTimeTicks) && oldHttpClient != null && (baseUrl is null || oldHttpClient.BaseAddress?.Equals(baseUrl) == true))
                     return oldHttpClient;
 
                 _httpClient = null;
@@ -753,7 +753,7 @@ namespace NLog.Targets
             return newHttpClient;
         }
 
-        private IWebProxy CreateWebProxy(string proxyAddress, string proxyUser, string proxyPassword)
+        private IWebProxy? CreateWebProxy(string proxyAddress, string proxyUser, string proxyPassword)
         {
             if (string.IsNullOrEmpty(proxyAddress))
                 return WebRequest.DefaultWebProxy;

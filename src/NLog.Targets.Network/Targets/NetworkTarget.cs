@@ -494,7 +494,7 @@ namespace NLog.Targets
                 });
         }
 
-        private void OnLogEventDropped(object sender, NetworkLogEventDroppedEventArgs logEventDroppedEventArgs)
+        private void OnLogEventDropped(object? sender, NetworkLogEventDroppedEventArgs logEventDroppedEventArgs)
         {
             LogEventDropped?.Invoke(this, logEventDroppedEventArgs);
         }

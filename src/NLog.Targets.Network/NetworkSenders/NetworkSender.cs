@@ -210,8 +210,11 @@ namespace NLog.Internal.NetworkSenders
         {
             public static readonly IPAddressComparer Default = new IPAddressComparer();
 
-            public int Compare(IPAddress x, IPAddress y)
+            public int Compare(IPAddress? x, IPAddress? y)
             {
+                if (x == null && y == null) return 0;
+                if (x == null) return -1;
+                if (y == null) return 1;
                 return ((int)x.AddressFamily).CompareTo((int)y.AddressFamily);
             }
         }
