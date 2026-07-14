@@ -384,7 +384,7 @@ namespace NLog.Targets
                     using (var httpContent = CreateHttpContent(output, out compressed))
                     {
                         var url = RenderBaseUrl(batch[0]);
-                        using var _ = await HttpClientSendAsync(url, httpContent, cancellationToken).ConfigureAwait(false);
+                        await WriteHttpContentAsync(url, httpContent, cancellationToken).ConfigureAwait(false);
                     }
 
                     startIndex += consumed;
@@ -401,18 +401,55 @@ namespace NLog.Targets
         }
 
         /// <summary>
+        /// Writes the HTTP content to the specified URL and processes the HTTP response asynchronously.
+        /// </summary>
+        /// <remarks>Override this method to implement custom handling based on the HTTP response body or HTTP response status code.</remarks>
+        /// <param name="url">The URL to which the HTTP content will be sent.</param>
+        /// <param name="httpContent">The HTTP content to be sent.</param>
+        /// <param name="cancellationToken">The cancellation token to cancel the operation.</param>
+        /// <returns>The HTTP status code returned by the server.</returns>
+        protected virtual async Task<HttpStatusCode> WriteHttpContentAsync(Uri url, HttpContent httpContent, CancellationToken cancellationToken)
+        {
+            using var httpResponseMessage = await HttpClientSendAsync(url, httpContent, cancellationToken).ConfigureAwait(false);
+            var httpStatusCode = httpResponseMessage.StatusCode;
+
+            try
+            {
+                httpResponseMessage.EnsureSuccessStatusCode();  // Throw if not a success code to trigger retry
+                return httpStatusCode;
+            }
+            catch (HttpRequestException ex)
+            {
+                NLog.Common.InternalLogger.Error(ex, "{0}: HTTP request returned status code {1} ({2})", this, (int)httpStatusCode, httpStatusCode);
+#if NET || NETSTANDARD2_1_OR_GREATER
+                if (httpStatusCode == HttpStatusCode.TooManyRequests || httpStatusCode == HttpStatusCode.RequestTimeout || ((int)httpStatusCode >= 500 && httpStatusCode != HttpStatusCode.NetworkAuthenticationRequired))
+#else
+                if ((int)httpStatusCode == 429 || httpStatusCode == HttpStatusCode.RequestTimeout || ((int)httpStatusCode >= 500 && (int)httpStatusCode != 511))
+#endif
+                {
+                    // Retry 429 + 408 + 5xx (server errors, typically transient)
+                    throw;
+                }
+
+                if (RetryCount <= 0)
+                    throw;  // When no retry configured, then also re-throw the exception for non-transient errors for NLog AsyncContinuation reporting
+
+                // Swallow other failures (e.g. 400 Bad Request) without retrying
+                return httpStatusCode;
+            }
+        }
+
+        /// <summary>
         /// Send an HTTP request as an asynchronous operation.
         /// </summary>
         /// <remarks>Support custom <see cref="HttpClientTarget"/> overrides of WriteAsyncTask, that calls with custom ByteArrayContent / StreamContent</remarks>
         /// <param name="url">Override the default <see cref="HttpClient.BaseAddress"/></param>
         /// <param name="httpContent">The contents of the HTTP message</param>
         /// <param name="cancellationToken">The cancellation token to cancel operation.</param>
-        /// <returns>HTTP response with status-code and data (Remember to Dispose the response)</returns>
+        /// <returns>HTTP response message. The caller owns disposal of the response.</returns>
         protected async Task<HttpResponseMessage> HttpClientSendAsync(Uri? url, HttpContent httpContent, CancellationToken cancellationToken)
         {
             var httpClient = ResetHttpClientIfNeeded(url);
-
-            HttpStatusCode httpStatusCode = default(HttpStatusCode);
 
             try
             {
@@ -422,38 +459,22 @@ namespace NLog.Targets
                 var startTickCount = Environment.TickCount;
 
                 var httpResponseMessage = await httpClient.SendAsync(httpRequest, cancellationToken).ConfigureAwait(false);
-                httpStatusCode = httpResponseMessage.StatusCode;
-                Common.InternalLogger.Debug("{0}: HTTP request completed after {1}ms with http-status-code {2}", this, (Environment.TickCount - startTickCount), (int)httpStatusCode);
 
-                try
-                {
-                    httpResponseMessage.EnsureSuccessStatusCode();  // Throw if not a success code to trigger retry
-                }
-                catch (HttpRequestException ex)
-                {
-#if NET || NETSTANDARD2_1_OR_GREATER
-                    if (httpStatusCode == HttpStatusCode.TooManyRequests || httpStatusCode == HttpStatusCode.RequestTimeout || ((int)httpStatusCode >= 500 && httpStatusCode != HttpStatusCode.NetworkAuthenticationRequired))
-#else
-                    if ((int)httpStatusCode == 429 || httpStatusCode == HttpStatusCode.RequestTimeout || ((int)httpStatusCode >= 500 && (int)httpStatusCode != 511))
-#endif
-                    {
-                        // Retry 429 + 408 + 5xx (server errors, typically transient)
-                        throw;
-                    }
+                NLog.Common.InternalLogger.Debug(
+                    "{0}: HTTP request completed after {1}ms with http-status-code {2}",
+                    this,
+                    (Environment.TickCount - startTickCount),
+                    (int)httpResponseMessage.StatusCode);
 
-                    if (RetryCount <= 0)
-                        throw;  // When no retry configured, then also re-throw the exception for non-transient errors for NLog AsyncContinuation reporting
-
-                    // Swallow other failures (e.g. 400 Bad Request) without retrying
-                    NLog.Common.InternalLogger.Error(ex, "{0}: HTTP request failed with status code {1}", this, (int)httpStatusCode);
-                }
                 return httpResponseMessage;
             }
             catch (Exception ex)
             {
-                NLog.Common.InternalLogger.Error(ex, "{0}: HTTP request failed with status code {1}", this, (int)httpStatusCode);
-                if (httpStatusCode == 0 && HttpClientLifeTimeExpired(Environment.TickCount, 5000))
-                    SignalHttpClientReset();  // Reset HttpClient immediately on transport-level failures (e.g. DNS failure, network failure) to clear the stale HttpClient TCP connection pool.
+                NLog.Common.InternalLogger.Error(ex, "{0}: HTTP request failed before receiving response", this);
+
+                if (HttpClientLifeTimeExpired(Environment.TickCount, 5000))
+                    SignalHttpClientReset();    // Reset HttpClient immediately on transport-level failures (e.g. DNS failure, network failure) to clear the stale HttpClient TCP connection pool.
+
                 throw;
             }
         }
