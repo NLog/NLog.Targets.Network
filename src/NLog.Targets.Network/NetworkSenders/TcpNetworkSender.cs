@@ -250,9 +250,12 @@ namespace NLog.Internal.NetworkSenders
             System.Threading.ThreadPool.QueueUserWorkItem(_asyncBeginRequest, socketEventArgs);
         }
 
-        private void BeginRequestAsync(object state)
+        private void BeginRequestAsync(object? state)
         {
-            BeginSocketRequest((SocketAsyncEventArgs)state);
+            if (state is SocketAsyncEventArgs socketArgs)
+            {
+                BeginSocketRequest(socketArgs);
+            }
         }
 
         private void BeginSocketRequest(SocketAsyncEventArgs args)
@@ -294,7 +297,7 @@ namespace NLog.Internal.NetworkSenders
             socketEventArgs.UserToken = networkRequest.AsyncContinuation;
         }
 
-        private void SocketOperationCompletedAsync(object sender, SocketAsyncEventArgs args)
+        private void SocketOperationCompletedAsync(object? sender, SocketAsyncEventArgs args)
         {
             var nextRequest = SocketOperationCompleted(args);
             if (nextRequest != null)

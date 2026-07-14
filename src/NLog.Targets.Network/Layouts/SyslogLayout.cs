@@ -432,7 +432,7 @@ namespace NLog.Layouts
                     }
                 case TypeCode.String:
                     {
-                        var stringValue = propertyValue.ToString();
+                        var stringValue = propertyValue.ToString() ?? string.Empty;
                         if (stringValue.IndexOfAny(EscapeSpecialChars) >= 0)
                             return stringValue.Replace("\\", "\\\\").Replace("]", "\\]").Replace("\"", "\\\"").Replace("\n", " ").Replace("\r", "");
                         else

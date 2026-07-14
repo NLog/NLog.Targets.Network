@@ -127,9 +127,10 @@ namespace NLog.Internal.NetworkSenders
             System.Threading.ThreadPool.QueueUserWorkItem(_asyncBeginRequest, socketEventArgs);
         }
 
-        private void BeginRequestAsync(object state)
+        private void BeginRequestAsync(object? state)
         {
-            BeginSocketRequest((SocketAsyncEventArgs)state);
+            if (state is SocketAsyncEventArgs socketArgs)
+                BeginSocketRequest(socketArgs);
         }
 
         private void BeginSocketRequest(SocketAsyncEventArgs args)
@@ -172,7 +173,7 @@ namespace NLog.Internal.NetworkSenders
             socketEventArgs.UserToken = networkRequest.AsyncContinuation;
         }
 
-        private void SocketOperationCompletedAsync(object sender, SocketAsyncEventArgs args)
+        private void SocketOperationCompletedAsync(object? sender, SocketAsyncEventArgs args)
         {
             var nextRequest = SocketOperationCompleted(args);
             if (nextRequest != null)
@@ -184,12 +185,11 @@ namespace NLog.Internal.NetworkSenders
         private SocketAsyncEventArgs? SocketOperationCompleted(SocketAsyncEventArgs args)
         {
             Exception? socketException = null;
-            if (args.SocketError != SocketError.Success)
+            if (args.SocketError != SocketError.Success || args.Buffer is null)
             {
                 socketException = new IOException($"Error: {args.SocketError.ToString()}, Address: {Address}");
             }
-
-            if (socketException is null && (args.Buffer.Length - args.Offset) > MaxMessageSize && MaxMessageSize > 0)
+            else if ((args.Buffer.Length - args.Offset) > MaxMessageSize && MaxMessageSize > 0)
             {
                 var messageLength = Math.Min(args.Buffer.Length - args.Offset - MaxMessageSize, MaxMessageSize);
                 args.SetBuffer(args.Buffer, args.Offset + MaxMessageSize, messageLength);

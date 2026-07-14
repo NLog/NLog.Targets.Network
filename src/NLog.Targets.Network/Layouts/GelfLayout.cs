@@ -297,7 +297,7 @@ namespace NLog.Layouts
                     target.Append(callerLineNumber);
                 }
 
-                var callerFileName = logEvent.CallerFilePath ?? logEvent.CallerClassName ?? logEvent.Exception?.TargetSite?.ToString() ?? logEvent.LoggerName;
+                var callerFileName = logEvent.CallerFilePath ?? logEvent.CallerClassName ?? logEvent.LoggerName;
                 if (!string.IsNullOrEmpty(callerFileName))
                 {
                     target.Append(_beginJsonPropertyName);
