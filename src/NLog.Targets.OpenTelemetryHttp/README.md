@@ -65,39 +65,39 @@ Supports the standard OpenTelemetry environment variables as fallback defaults:
 
 | Parameter                | Default                        | Description                                                                  |
 | ------------------------ | ------------------------------ | -----------------------------------------------------------------------------|
-| `url`                    | OTEL_EXPORTER_OTLP_ENDPOINT    | OTLP/HTTP endpoint URL. Automatically append `/v1/logs` when missing.        |
-| `layout`                 | `${message}`                   | Layout used to populate the OpenTelemetry `LogRecord.Body` field.            |
-| `traceId`                | `${activity:property=TraceId}` | Layout used to populate the OpenTelemetry `LogRecord.TraceId` field.         |
-| `spanId`                 | `${activity:property=SpanId}`  | Layout used to populate the OpenTelemetry `LogRecord.SpanId` field.          |
-| `includeEventProperties` | `true`                         | Includes NLog event properties as OpenTelemetry log attributes.              |
-| `scopeName`              | `NLog`                         | OpenTelemetry instrumentation scope name.                                    |
-| `serviceName`            | `${appdomain:format=Friendly}` | OpenTelemetry `service.name` resource attribute.                             |
-| `serviceVersion`         | `${assembly-version:Default=}` | OpenTelemetry `service.version` resource attribute.                          |
-| `hostName`               | `${hostname}`                  | OpenTelemetry `host.name` resource attribute.                                |
-| `resourceAttributes`     | OTEL_RESOURCE_ATTRIBUTES       | Additional OpenTelemetry resource attributes.                                |
-| `headers`                | OTEL_EXPORTER_OTLP_HEADERS     | Additional HTTP headers.                                                     |
-| `sendTimeoutSeconds`     | `30`                           | HTTP request timeout in seconds.                                             |
+| _url_                    | OTEL_EXPORTER_OTLP_ENDPOINT    | OTLP/HTTP endpoint URL. Automatically append `/v1/logs` when missing.        |
+| _layout_                 | `${message}`                   | Layout used to populate the OpenTelemetry `LogRecord.Body` field.            |
+| _traceId_                | `${activity:property=TraceId}` | Layout used to populate the OpenTelemetry `LogRecord.TraceId` field.         |
+| _spanId_                 | `${activity:property=SpanId}`  | Layout used to populate the OpenTelemetry `LogRecord.SpanId` field.          |
+| _includeEventProperties_ | `true`                         | Includes NLog event properties as OpenTelemetry log attributes.              |
+| _scopeName_              | `NLog`                         | OpenTelemetry instrumentation scope name.                                    |
+| _serviceName_            | `${appdomain:format=Friendly}` | OpenTelemetry `service.name` resource attribute.                             |
+| _serviceVersion_         | `${assembly-version:Default=}` | OpenTelemetry `service.version` resource attribute.                          |
+| _hostName_               | `${hostname}`                  | OpenTelemetry `host.name` resource attribute.                                |
+| _resourceAttributes_     | OTEL_RESOURCE_ATTRIBUTES       | Additional OpenTelemetry resource attributes.                                |
+| _headers_                | OTEL_EXPORTER_OTLP_HEADERS     | Additional HTTP headers.                                                     |
+| _sendTimeoutSeconds_     | `30`                           | HTTP request timeout in seconds.                                             |
 
 | Batching and Retry       | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
-| `batchSize`              | `200`               | Maximum number of log events to send in a single HTTP payload.                    |
-| `compress`               | `None`              | Optional payload compression. Supports `None`, `GZip`, and `GZipFast`.            |
-| `maxPayloadSizeBytes`    | `40960`             | Max payload size before splitting into multiple HTTP requests. Remember `BatchSize` |
-| `taskDelayMilliseconds`  | `50`                | Delay before processing queued log events. Higher value can improve batching      |
-| `taskTimeoutSeconds`     | `150`               | Maximum time in seconds before cancellation of HTTP request.                      |
-| `retryCount`             | `0`                 | Number of retry attempts for failed write operations.                             |
-| `retryDelayMilliseconds` | `2500`              | Initial delay before retry after failed request. Delay doubles for each retry.    |
-| `queueLimit`             | `10000`             | Maximum number of pending log events allowed in the internal queue.               |
-| `overflowAction`         | `Discard`           | Action taken when the internal request queue reaches its limit.                   |
+| _batchSize_              | `200`               | Maximum number of log events to send in a single HTTP payload.                    |
+| _compress_               | `None`              | Optional payload compression. Supports `None`, `GZip`, and `GZipFast`.            |
+| _maxPayloadSizeBytes_    | `40960`             | Max payload size before splitting into multiple HTTP requests. Remember `BatchSize` |
+| _taskDelayMilliseconds_  | `50`                | Delay before processing queued log events. Higher value can improve batching      |
+| _taskTimeoutSeconds_     | `150`               | Maximum time in seconds before cancellation of HTTP request.                      |
+| _retryCount_             | `0`                 | Number of retry attempts for failed write operations.                             |
+| _retryDelayMilliseconds_ | `2500`              | Initial delay before retry after failed request. Delay doubles for each retry.    |
+| _queueLimit_             | `10000`             | Maximum number of pending log events allowed in the internal queue.               |
+| _overflowAction_         | `Discard`           | Action taken when the internal request queue reaches its limit.                   |
 
 
 | Authentication and Security | Default          | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
-| `sslCertificateFile`     |                     | Client certificate file used for mutual TLS authentication.                       |
-| `sslCertificatePassword` |                     | Password for the client certificate.                                              |
-| `proxyUrl`               |                     | Proxy server URL.                                                                 |
-| `proxyUser`              |                     | Proxy authentication username.                                                    |
-| `proxyPassword`          |                     | Proxy authentication password.                                                    |
+| _sslCertificateFile_     |                     | Client certificate file used for mutual TLS authentication.                       |
+| _sslCertificatePassword_ |                     | Password for the client certificate.                                              |
+| _proxyUrl_               |                     | Proxy server URL.                                                                 |
+| _proxyUser_              |                     | Proxy authentication username.                                                    |
+| _proxyPassword_          |                     | Proxy authentication password.                                                    |
 
 
 ## Resource Attributes
