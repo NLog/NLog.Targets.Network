@@ -403,11 +403,11 @@ namespace NLog.Targets
         /// <summary>
         /// Writes the HTTP content to the specified URL and processes the HTTP response asynchronously.
         /// </summary>
-        /// <remarks>Override this method to implement custom handling based on the HTTP response body or HTTP response status code.</remarks>
+        /// <remarks>The default implementation only examines the response HttpStatusCode without reading the HTTP response body. Override this method to implement custom handling of the HTTP response, or to read the response body.</remarks>
         /// <param name="url">The URL to which the HTTP content will be sent.</param>
         /// <param name="httpContent">The HTTP content to be sent.</param>
         /// <param name="cancellationToken">The cancellation token to cancel the operation.</param>
-        /// <returns>The HTTP status code returned by the server.</returns>
+        /// <returns>The HTTP status code returned by the server (but throws exception for non-success status codes that are transient/retryable).</returns>
         protected virtual async Task<HttpStatusCode> WriteHttpContentAsync(Uri url, HttpContent httpContent, CancellationToken cancellationToken)
         {
             using var httpResponseMessage = await HttpClientSendAsync(url, httpContent, cancellationToken).ConfigureAwait(false);
