@@ -57,9 +57,6 @@ LogManager.Setup().SetupExtensions(ext => {
 | _layout_                 | Required            | Layout used to render log events into the HTTP request body.                      |
 | _httpMethod_             | `POST`              | HTTP method used when sending requests.                                           |
 | _contentType_            | `application/json`  | Value of the HTTP Content-Type header.                                            |
-| _keepAlive_              | `true`              | Keeps HTTP connections open for reuse in subsequent requests to improve performance. |
-| _expect100Continue_      | `false`             | Enables the HTTP Expect: 100-continue handshake before sending the request body.  |
-| _sendTimeoutSeconds_     | `30`                | HTTP request timeout in seconds.                                                  |
 | _headers_                |                     | Additional HTTP request headers.                                                  |
 
 | Batching and Retry       | Default             | Description                                                                       |
@@ -77,8 +74,11 @@ LogManager.Setup().SetupExtensions(ext => {
 | _overflowAction_         | `Discard`           | Action taken when the internal request queue reaches its limit.                   |
 
 
-| Authentication and Security | Default          | Description                                                                       |
+| Network and Security     | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
+| _keepAlive_              | `true`              | Keeps HTTP connections open for reuse in subsequent requests to improve performance. |
+| _expect100Continue_      | `false`             | Enables the HTTP Expect: 100-continue handshake before sending the request body.  |
+| _sendTimeoutSeconds_     | `30`                | HTTP request timeout in seconds.                                                  |
 | _networkUserName_        |                     | Username for HTTP authentication. `_networkUserName = ""` means default NTLM credentials. |
 | _networkPassword_        |                     | Password for HTTP authentication.                                                 |
 | _sslCertificateFile_     |                     | Client certificate file used for mutual TLS authentication.                       |
