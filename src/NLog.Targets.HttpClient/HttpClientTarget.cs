@@ -53,10 +53,7 @@ namespace NLog.Targets
     /// Uses the configured <see cref="Layout"/> for converting log events into the HTTP request body.
     ///
     /// This class can also be used as a base class for custom targets that need custom request serialization or HTTP response handling.
-    ///
-    /// <a href="https://github.com/NLog/NLog/wiki/HttpClient-target">See NLog Wiki</a>
     /// </remarks>
-    /// <seealso href="https://github.com/NLog/NLog/wiki/HttpClient-target">Documentation on NLog Wiki</seealso>
     [Target("HttpClient")]
     [Target("Http")]
     public class HttpClientTarget : AsyncTaskTarget
