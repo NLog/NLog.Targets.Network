@@ -403,7 +403,7 @@ namespace NLog.Targets
         /// <summary>
         /// Writes the HTTP content to the specified URL and processes the HTTP response asynchronously.
         /// </summary>
-        /// <remarks>The default implementation only examines the response HttpStatusCode without reading the HTTP response body. Override this method to implement custom handling of the HTTP response, or to read the response body.</remarks>
+        /// <remarks>The default implementation sends the request and validates the HTTP status code. It does not read the response body.</remarks>
         /// <param name="url">The URL to which the HTTP content will be sent.</param>
         /// <param name="httpContent">The HTTP content to be sent.</param>
         /// <param name="cancellationToken">The cancellation token to cancel the operation.</param>
@@ -440,7 +440,7 @@ namespace NLog.Targets
         }
 
         /// <summary>
-        /// Send an HTTP request as an asynchronous operation.
+        /// Sends HTTP content to the specified URL and returns the HTTP response (without reading the HTTP response body upfront)
         /// </summary>
         /// <remarks>Support custom <see cref="HttpClientTarget"/> overrides of WriteAsyncTask, that calls with custom ByteArrayContent / StreamContent</remarks>
         /// <param name="url">Override the default <see cref="HttpClient.BaseAddress"/></param>
@@ -480,8 +480,12 @@ namespace NLog.Targets
         }
 
         /// <summary>
-        /// Serializes log events into the HTTP request body.
+        /// Writes log events into the HTTP request body.
         /// </summary>
+        /// <remarks>
+        /// The default implementation renders <see cref="Layout"/> into the request body.
+        /// Derived targets can override this method to implement endpoint-specific serialization formats (Ex. protobuf).
+        /// </remarks>
         /// <param name="logEvents">The log events to serialize.</param>
         /// <param name="output">The destination stream for the serialized HTTP request body. The stream is owned by <see cref="HttpClientTarget"/> and must not be disposed.</param>
         /// <returns>The number of log events serialized into the HTTP request body.</returns>
