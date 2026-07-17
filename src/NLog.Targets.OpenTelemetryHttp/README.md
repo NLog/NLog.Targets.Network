@@ -76,7 +76,6 @@ Supports the standard OpenTelemetry environment variables as fallback defaults:
 | _hostName_               | `${hostname}`                  | OpenTelemetry `host.name` resource attribute.                                |
 | _resourceAttributes_     | OTEL_RESOURCE_ATTRIBUTES       | Additional OpenTelemetry resource attributes.                                |
 | _headers_                | OTEL_EXPORTER_OTLP_HEADERS     | Additional HTTP headers.                                                     |
-| _sendTimeoutSeconds_     | `30`                           | HTTP request timeout in seconds.                                             |
 
 | Batching and Retry       | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
@@ -91,8 +90,9 @@ Supports the standard OpenTelemetry environment variables as fallback defaults:
 | _overflowAction_         | `Discard`           | Action taken when the internal request queue reaches its limit.                   |
 
 
-| Authentication and Security | Default          | Description                                                                       |
+| Network and  Security    | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
+| _sendTimeoutSeconds_     | `30`                 HTTP request timeout in seconds.                                                   |
 | _sslCertificateFile_     |                     | Client certificate file used for mutual TLS authentication.                       |
 | _sslCertificatePassword_ |                     | Password for the client certificate.                                              |
 | _proxyUrl_               |                     | Proxy server URL.                                                                 |
