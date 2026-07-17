@@ -44,10 +44,8 @@ namespace NLog.Targets
     /// Sends log events to OpenTelemetry HTTP endpoint using protobuf (OTLP/HTTP).
     /// </summary>
     /// <remarks>
-    /// <para>
     /// The target serializes log events into the OTLP ExportLogsServiceRequest protobuf format
     /// and sends them via HTTP POST. Typical endpoint URL is <c>http://localhost:4318/v1/logs</c>.
-    /// </para>
     /// </remarks>
     [Target("OpenTelemetry")]
     [Target("OpenTelemetryHttp")]
