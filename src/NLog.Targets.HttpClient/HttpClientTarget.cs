@@ -407,7 +407,7 @@ namespace NLog.Targets
         /// <param name="url">The URL to which the HTTP content will be sent.</param>
         /// <param name="httpContent">The HTTP content to be sent.</param>
         /// <param name="cancellationToken">The cancellation token to cancel the operation.</param>
-        /// <returns>The HTTP status code returned by the server (but throws exception for non-success status codes that are transient/retryable).</returns>
+        /// <returns>The HTTP status code returned by the server. Throws <see cref="HttpRequestException"/> for transient/retryable HTTP failures.</returns>
         protected virtual async Task<HttpStatusCode> WriteHttpContentAsync(Uri url, HttpContent httpContent, CancellationToken cancellationToken)
         {
             using var httpResponseMessage = await HttpClientSendAsync(url, httpContent, cancellationToken).ConfigureAwait(false);
@@ -440,9 +440,11 @@ namespace NLog.Targets
         }
 
         /// <summary>
-        /// Sends HTTP content to the specified URL and returns the HTTP response (without reading the HTTP response body upfront)
+        /// Sends HTTP content to the specified URL and returns the HTTP response without consuming the response body.
         /// </summary>
-        /// <remarks>Support custom <see cref="HttpClientTarget"/> overrides of WriteAsyncTask, that calls with custom ByteArrayContent / StreamContent</remarks>
+        /// <remarks>
+        /// This method is intended for derived targets that need custom HTTP response handling. Caller owns disposal of the returned <see cref="HttpResponseMessage"/>.
+        /// </remarks>
         /// <param name="url">Override the default <see cref="HttpClient.BaseAddress"/></param>
         /// <param name="httpContent">The contents of the HTTP message</param>
         /// <param name="cancellationToken">The cancellation token to cancel operation.</param>
@@ -483,7 +485,7 @@ namespace NLog.Targets
         /// Writes log events into the HTTP request body.
         /// </summary>
         /// <remarks>
-        /// The default implementation renders <see cref="Layout"/> into the request body.
+        /// The default implementation renders the configured <see cref="Layout"/> into the request body.
         /// Derived targets can override this method to implement endpoint-specific serialization formats (Ex. protobuf).
         /// </remarks>
         /// <param name="logEvents">The log events to serialize.</param>
