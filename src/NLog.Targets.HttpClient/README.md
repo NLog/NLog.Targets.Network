@@ -53,7 +53,7 @@ LogManager.Setup().SetupExtensions(ext => {
 
 | Parameter                | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
-| _url_                    | Required            | Destination URL for HTTP requests.                                                |
+| _url_                    | Required            | EndPoint URL for HTTP requests.                                                   |
 | _layout_                 | Required            | Layout used to render log events into the HTTP request body.                      |
 | _httpMethod_             | `POST`              | HTTP method used when sending requests.                                           |
 | _contentType_            | `application/json`  | Value of the HTTP Content-Type header.                                            |
