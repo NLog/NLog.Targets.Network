@@ -454,30 +454,53 @@ namespace NLog.Targets
         {
             var httpClient = ResetHttpClientIfNeeded(url);
 
+            using var httpRequest = new HttpRequestMessage(_httpMethod, string.Empty) { Content = httpContent };
+            httpRequest.Content.Headers.ContentType = _contentTypeHeader;
+
+            var startTickCount = Environment.TickCount;
+
             try
             {
-                using var httpRequest = new HttpRequestMessage(_httpMethod, string.Empty) { Content = httpContent };
-                httpRequest.Content.Headers.ContentType = _contentTypeHeader;
-
-                var startTickCount = Environment.TickCount;
-
                 var httpResponseMessage = await httpClient.SendAsync(httpRequest, cancellationToken).ConfigureAwait(false);
 
                 NLog.Common.InternalLogger.Debug(
                     "{0}: HTTP request completed after {1}ms with http-status-code {2}",
                     this,
-                    (Environment.TickCount - startTickCount),
+                    unchecked(Environment.TickCount - startTickCount),
                     (int)httpResponseMessage.StatusCode);
 
                 return httpResponseMessage;
             }
+            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                NLog.Common.InternalLogger.Error(
+                    ex,
+                    "{0}: HTTP request timed out after {1} ms",
+                    this,
+                    unchecked(Environment.TickCount - startTickCount));
+                if (HttpClientLifeTimeExpired(Environment.TickCount, 30 * 1000))
+                    SignalHttpClientReset();
+                throw;
+            }
+            catch (OperationCanceledException ex)
+            {
+                NLog.Common.InternalLogger.Error(
+                    ex,
+                    "{0}: HTTP request cancelled by {1} after {2} ms",
+                    this,
+                    cancellationToken.IsCancellationRequested ? "target cancellation" : "unknown reason",
+                    unchecked(Environment.TickCount - startTickCount));
+                throw;
+            }
             catch (Exception ex)
             {
-                NLog.Common.InternalLogger.Error(ex, "{0}: HTTP request failed before receiving response", this);
-
-                if (HttpClientLifeTimeExpired(Environment.TickCount, 5000))
+                NLog.Common.InternalLogger.Error(
+                    ex,
+                    "{0}: HTTP request failed before receiving response after {1} ms",
+                    this,
+                    unchecked(Environment.TickCount - startTickCount));
+                if (HttpClientLifeTimeExpired(Environment.TickCount, 30 * 1000))
                     SignalHttpClientReset();    // Reset HttpClient immediately on transport-level failures (e.g. DNS failure, network failure) to clear the stale HttpClient TCP connection pool.
-
                 throw;
             }
         }
@@ -751,6 +774,8 @@ namespace NLog.Targets
                 handler.UseProxy = false;
             }
 
+            handler.MaxConnectionsPerServer = 10;   // Avoid connection pressure to protect the user application
+
             var newHttpClient = new HttpClient(handler)
             {
                 BaseAddress = baseUrl,
@@ -758,9 +783,7 @@ namespace NLog.Targets
             if (SendTimeoutSeconds > 0)
                 newHttpClient.Timeout = TimeSpan.FromSeconds(SendTimeoutSeconds);
 
-            if (KeepAlive)
-                newHttpClient.DefaultRequestHeaders.Connection.Add("keep-alive");
-            else
+            if (!KeepAlive)
                 newHttpClient.DefaultRequestHeaders.ConnectionClose = true; // Closes TCP connection after each request (Disables HTTP Keep-Alive)
 
             if (Expect100Continue.HasValue)
