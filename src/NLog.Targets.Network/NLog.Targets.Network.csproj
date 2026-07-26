@@ -5,7 +5,7 @@
     <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' AND '$(VisualStudioVersion)' &lt; '17.0' ">net35;net46;net471;netstandard2.0</TargetFrameworks>
     <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' ">net35;net46;net471;netstandard2.0;netstandard2.1</TargetFrameworks>
 
-    <VersionPrefix>6.0.4</VersionPrefix>
+    <VersionPrefix>6.1.4</VersionPrefix>
     <AssemblyVersion>6.0.0.0</AssemblyVersion>
     <!-- Strong AssemblyVersion must be fixed on 6.0.0.0 -->
     <AppVeyorBuildNumber>$(APPVEYOR_BUILD_NUMBER)</AppVeyorBuildNumber>
@@ -24,9 +24,11 @@
     <PackageReleaseNotes>
 Changelog:
 
-- First release after extracting to own git repository.
-- SyslogLayout - Rfc5424 specs says escape is not needed for square-bracket and equal-sign.
-- Handle that IPv6 DualMode is not supported on all platforms.
+- SyslogLayout - Changed to use RFC5424 as default
+- GelfLayout - Caller FileName without AOT warning
+- SplunkLayout - Changed default SourceType to _json
+- Replaced obsolete WebRequest with HttpClient in NetworkTarget (.NET v3.5 no longer supports HTTP / HTTPS)
+- Updated to NLog 6.1.4
     </PackageReleaseNotes>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>NLog;TCPIP;TCP;UDP;Network;logging;log;GELF;Syslog;Splunk;Log4JXml</PackageTags>
