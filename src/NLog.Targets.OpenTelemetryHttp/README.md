@@ -67,7 +67,7 @@ Supports the standard OpenTelemetry environment variables as fallback defaults:
 
 | Parameter                | Default                        | Description                                                                  |
 | ------------------------ | ------------------------------ | -----------------------------------------------------------------------------|
-| _url_                    | OTEL_EXPORTER_OTLP_ENDPOINT    | OTLP/HTTP endpoint URL. Automatically append `/v1/logs` when missing.        |
+| _url_                    | OTEL_EXPORTER_OTLP_ENDPOINT    | OTLP/HTTP endpoint URL. Automatically appends `/v1/logs` when missing.       |
 | _layout_                 | `${message}`                   | Layout used to populate the OpenTelemetry `LogRecord.Body` field.            |
 | _traceId_                | `${activity:property=TraceId}` | Layout used to populate the OpenTelemetry `LogRecord.TraceId` field.         |
 | _spanId_                 | `${activity:property=SpanId}`  | Layout used to populate the OpenTelemetry `LogRecord.SpanId` field.          |
