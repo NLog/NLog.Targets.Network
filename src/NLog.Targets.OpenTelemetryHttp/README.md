@@ -94,7 +94,7 @@ Supports the standard OpenTelemetry environment variables as fallback defaults:
 
 | Network and  Security    | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
-| _sendTimeoutSeconds_     | `30`                 HTTP request timeout in seconds.                                                   |
+| _sendTimeoutSeconds_     | `30`                | HTTP request timeout in seconds.                                                  |
 | _sslCertificateFile_     |                     | Client certificate file used for mutual TLS authentication.                       |
 | _sslCertificatePassword_ |                     | Password for the client certificate.                                              |
 | _proxyUrl_               |                     | Proxy server URL.                                                                 |
