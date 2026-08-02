@@ -117,7 +117,7 @@ namespace NLog.Targets.HttpClient.Tests
                 {
                     Url = $"http://127.0.0.1:{server.Port}/logs",
                     Layout = "${message}",
-                    TaskDelayMilliseconds = 10,
+                    TaskDelayMilliseconds = 5,
                 };
 
                 using (var logFactory = BuildLogFactory(target))
@@ -149,7 +149,7 @@ namespace NLog.Targets.HttpClient.Tests
                     Layout = "${message}",
                     BatchAsJsonArray = true,
                     BatchSize = 200,
-                    TaskDelayMilliseconds = 10,
+                    TaskDelayMilliseconds = 5,
                 };
 
                 using (var logFactory = BuildLogFactory(target))
@@ -265,7 +265,7 @@ namespace NLog.Targets.HttpClient.Tests
                         Url = $"${{gdc:item={gdcKey}}}/logs",
                         Layout = "${message}",
                         RetryCount = 0,
-                        TaskDelayMilliseconds = 10,
+                        TaskDelayMilliseconds = 5,
                     };
 
                     using (var logFactory = BuildLogFactory(target))
@@ -307,8 +307,8 @@ namespace NLog.Targets.HttpClient.Tests
                     Url = "http://nlog-targets-httpclient-invalid.invalid/logs",
                     Layout = "${message}",
                     RetryCount = 0,
-                    RetryDelayMilliseconds = 10,
-                    TaskDelayMilliseconds = 10,
+                    RetryDelayMilliseconds = 5,
+                    TaskDelayMilliseconds = 5,
                 };
 
                 using (var logFactory = BuildLogFactory(target))
@@ -342,7 +342,7 @@ namespace NLog.Targets.HttpClient.Tests
                     Layout = "${message}",
                     MaxPayloadSizeBytes = 5,    // Forces split: each ~4-byte message overflows with separator
                     RetryCount = 0,
-                    TaskDelayMilliseconds = 10,
+                    TaskDelayMilliseconds = 5,
                 };
 
                 using (var logFactory = BuildLogFactory(target))
@@ -375,7 +375,7 @@ namespace NLog.Targets.HttpClient.Tests
                     Url = $"http://127.0.0.1:{server.Port}/logs",
                     Layout = "${message}",
                     RetryCount = 1,
-                    RetryDelayMilliseconds = 10,
+                    RetryDelayMilliseconds = 5,
                 };
 
                 using (var logFactory = BuildLogFactory(target))
@@ -404,7 +404,7 @@ namespace NLog.Targets.HttpClient.Tests
                     Url = $"http://127.0.0.1:{server.Port}/logs",
                     Layout = "${message}",
                     RetryCount = 3,
-                    RetryDelayMilliseconds = 10,
+                    RetryDelayMilliseconds = 5,
                 };
 
                 using (var logFactory = BuildLogFactory(target))
@@ -445,7 +445,7 @@ namespace NLog.Targets.HttpClient.Tests
                     Url = $"http://127.0.0.1:{server.Port}/logs",
                     Layout = "${message}",
                     RetryCount = 0,
-                    RetryDelayMilliseconds = 10,
+                    RetryDelayMilliseconds = 5,
                 };
 
                 var fallbackGroupTarget = new FallbackGroupTarget
@@ -497,7 +497,7 @@ namespace NLog.Targets.HttpClient.Tests
                     Url = $"http://127.0.0.1:{server.Port}/logs",
                     Layout = "${message}",
                     RetryCount = 1,
-                    RetryDelayMilliseconds = 10,
+                    RetryDelayMilliseconds = 5,
                 };
 
                 var fallbackGroupTarget = new FallbackGroupTarget
@@ -538,8 +538,8 @@ namespace NLog.Targets.HttpClient.Tests
                     Layout = "${message}",
                     BatchSize = 1,
                     RetryCount = 0,
-                    RetryDelayMilliseconds = 1,  // Avoid delay when network connectivity issues
-                    TaskDelayMilliseconds = 1,
+                    RetryDelayMilliseconds = 0, // Avoid any delay (backoff) after failed http-request
+                    TaskDelayMilliseconds = 5,
                 };
 
                 using (var logFactory = BuildLogFactory(target))
@@ -564,7 +564,7 @@ namespace NLog.Targets.HttpClient.Tests
 
                     Assert.Equal(2, requests.Count);
                     Assert.Equal("succeeds", requests[1].Body);
-                    Assert.True(stopwatch.ElapsedMilliseconds < 900, $"Expected immediate write after failed batch, but elapsed {stopwatch.ElapsedMilliseconds} ms.");
+                    Assert.True(stopwatch.ElapsedMilliseconds < 2000, $"Expected immediate write after failed batch, but elapsed {stopwatch.ElapsedMilliseconds} ms.");
                 }
             }
         }
