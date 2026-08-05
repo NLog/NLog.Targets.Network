@@ -42,8 +42,7 @@ Typical endpoint URL is `http://localhost:4318/v1/logs`.
     <target xsi:type="OpenTelemetry"
             name="otlp"
             url="http://localhost:4318/v1/logs"
-            serviceName="MyApplication"
-            layout="${message}" />
+            serviceName="MyApplication" />
 </targets>
 
 <rules>
