@@ -40,14 +40,14 @@ Typical endpoint URL is `http://localhost:4318/v1/logs`.
 ```xml
 <targets>
     <target xsi:type="OpenTelemetry"
-            name="otel"
+            name="otlp"
             url="http://localhost:4318/v1/logs"
             serviceName="MyApplication"
             layout="${message}" />
 </targets>
 
 <rules>
-    <logger name="*" minlevel="Info" writeTo="otel" />
+    <logger name="*" minlevel="Info" writeTo="otlp" />
 </rules>
 ```
 
