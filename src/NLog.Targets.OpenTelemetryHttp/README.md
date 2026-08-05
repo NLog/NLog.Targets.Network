@@ -105,7 +105,7 @@ Supports the standard OpenTelemetry environment variables as fallback defaults:
 Additional OpenTelemetry resource attributes can be configured using `resourceAttribute` entries:
 
 ```xml
-<target xsi:type="OpenTelemetry" name="otel">
+<target xsi:type="OpenTelemetry" name="otlp">
 
     <resourceAttribute name="service.namespace" layout="Backend" />
     <resourceAttribute name="deployment.environment" layout="Production" />
