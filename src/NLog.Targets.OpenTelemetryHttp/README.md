@@ -79,15 +79,15 @@ Supports the standard OpenTelemetry environment variables as fallback defaults:
 
 | Batching and Retry       | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
-| _batchSize_              | `200`               | Maximum number of log events to send in a single HTTP payload.                    |
-| _compress_               | `None`              | Optional payload compression. Supports `None`, `GZip`, and `GZipFast`.            |
+| _batchSize_              | `200`               | Maximum number of log events to send in a single HTTP payload. Increase on high-latency connections. |
+| _compress_               | `None`              | Optional compression of the OTLP/HTTP request payload. Supports None, GZip, and GZipFast. |
 | _maxPayloadSizeBytes_    | `40960`             | Max payload size before splitting into multiple HTTP requests. Remember `BatchSize` |
-| _taskDelayMilliseconds_  | `50`                | Delay before processing queued log events. Higher value can improve batching      |
+| _taskDelayMilliseconds_  | `50`                | Delay before processing queued log events. Increasing value can improve batching. |
 | _taskTimeoutSeconds_     | `150`               | Maximum time in seconds before cancellation of HTTP request.                      |
 | _retryCount_             | `0`                 | Number of retry attempts for failed write operations.                             |
 | _retryDelayMilliseconds_ | `2500`              | Initial delay before retry after failed request. Delay doubles for each retry.    |
 | _queueLimit_             | `10000`             | Maximum number of pending log events allowed in the internal queue.               |
-| _overflowAction_         | `Discard`           | Action taken when the internal request queue reaches its limit.                   |
+| _overflowAction_         | `Discard`           | Action taken when the internal queue reaches its limit.                           |
 
 
 | Network and  Security    | Default             | Description                                                                       |
