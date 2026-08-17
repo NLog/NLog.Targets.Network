@@ -61,23 +61,23 @@ LogManager.Setup().SetupExtensions(ext => {
 
 | Batching and Retry       | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
-| _batchSize_              | `1`                 | Maximum number of log events to send in a single HTTP payload.                    |
-| _compress_               | `None`              | Optional payload compression. Supports `None`, `GZip`, and `GZipFast`.            |
-| _lineEnding_             | `LF`                | Line separator used when batching log events.                                     |
+| _batchSize_              | `1`                 | Maximum number of log events to send in a single HTTP payload. Increase on high-latency connections. |
+| _compress_               | `None`              | Optional compression of the HTTP request payload.. Supports `None`, `GZip`, and `GZipFast`. |
+| _lineEnding_             | `LF`                | Line separator used between log events when batching.                             |
 | _batchAsJsonArray_       | `false`             | Wraps batched log events in a JSON array instead of separating them with `lineEnding`. |
 | _maxPayloadSizeBytes_    | `40960`             | Max payload size before splitting into multiple HTTP requests. Remember `BatchSize` |
-| _taskDelayMilliseconds_  | `1`                 | Delay before processing queued log events. Higher value can improve batching      |
+| _taskDelayMilliseconds_  | `1`                 | Delay before processing queued log events. Increasing value can improve batching. |
 | _taskTimeoutSeconds_     | `150`               | Maximum time in seconds before cancellation of HTTP request.                      |
 | _retryCount_             | `0`                 | Number of retry attempts for failed write operations.                             |
 | _retryDelayMilliseconds_ | `2500`              | Initial delay before retry after failed request. Delay doubles for each retry.    |
 | _queueLimit_             | `10000`             | Maximum number of pending log events allowed in the internal queue.               |
-| _overflowAction_         | `Discard`           | Action taken when the internal request queue reaches its limit.                   |
+| _overflowAction_         | `Discard`           | Action taken when the internal queue reaches its limit.                           |
 
 
 | Network and Security     | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
-| _keepAlive_              | `true`              | Keeps HTTP connections open for reuse in subsequent requests to improve performance. |
-| _expect100Continue_      | `false`             | Enables the HTTP Expect: 100-continue handshake before sending the request body.  |
+| _keepAlive_              | `true`              | Keeps HTTP connections open for reuse by subsequent requests for better performance. |
+| _expect100Continue_      | `false`             | Enables the HTTP 100-Continue handshake before sending the request body, but can increase latency. |
 | _sendTimeoutSeconds_     | `30`                | HTTP request timeout in seconds.                                                  |
 | _networkUserName_        |                     | Username for HTTP authentication. `_networkUserName = ""` means default NTLM credentials. |
 | _networkPassword_        |                     | Password for HTTP authentication.                                                 |
