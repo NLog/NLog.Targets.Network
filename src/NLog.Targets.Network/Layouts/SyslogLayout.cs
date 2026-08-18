@@ -332,7 +332,11 @@ namespace NLog.Layouts
             target.Append(string.IsNullOrEmpty(msgId) ? NilValue : msgId);
 
             var structuredDataId = EscapePropertyName(StructuredDataId?.Render(logEvent) ?? string.Empty);
-            if (!string.IsNullOrEmpty(structuredDataId))
+            if (string.IsNullOrEmpty(structuredDataId))
+            {
+                target.Append(' ').Append(NilValue);    // SD-Element disabled
+            }
+            else
             {
                 if (IncludeEventProperties && logEvent.HasProperties)
                 {
@@ -343,9 +347,7 @@ namespace NLog.Layouts
                             continue;
 
                         structuredDataId = AppendPropertyName(target, structuredDataId, propertyName);
-
-                        var propertyValue = eventProperty.Value;
-                        AppendPropertyValue(target, propertyValue);
+                        AppendPropertyValue(target, eventProperty.Value);
                     }
                 }
 
@@ -365,7 +367,11 @@ namespace NLog.Layouts
 
                 if (string.IsNullOrEmpty(structuredDataId))
                 {
-                    target.Append(']');
+                    target.Append(']'); // SD-Element has values
+                }
+                else
+                {
+                    target.Append(' ').Append(NilValue);    // SD-Element was empty
                 }
             }
 
@@ -536,14 +542,10 @@ namespace NLog.Layouts
 
         private static SyslogLevel ToSyslogLevel(LogLevel logLevel)
         {
-            try
-            {
-                return _loglevelMappings[logLevel.Ordinal];
-            }
-            catch (IndexOutOfRangeException)
-            {
-                return NLog.Layouts.SyslogLevel.Emergency;
-            }
+            var ordinal = logLevel.Ordinal;
+            return (uint)ordinal < (uint)_loglevelMappings.Length
+                ? _loglevelMappings[ordinal]
+                : NLog.Layouts.SyslogLevel.Emergency;
         }
 
         private static Dictionary<SyslogLevel, string> ResolveFacilityMapper(SyslogFacility facility)

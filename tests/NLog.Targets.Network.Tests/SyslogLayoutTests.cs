@@ -141,7 +141,7 @@ namespace NLog.Targets.Network
                 logger.Log(logEvent);
 
                 Assert.Single(memTarget.Logs);
-                Assert.Equal($"<14>1 {logEvent.TimeStamp:o} {HostName} {ProcessName} {ProcessId} - {logEvent.Message}", memTarget.Logs[0]);
+                Assert.Equal($"<14>1 {logEvent.TimeStamp:o} {HostName} {ProcessName} {ProcessId} - - {logEvent.Message}", memTarget.Logs[0]);
             }
         }
 
@@ -156,7 +156,7 @@ namespace NLog.Targets.Network
                 logger.Log(logEvent);
 
                 Assert.Single(memTarget.Logs);
-                Assert.Equal($"<14>1 {logEvent.TimeStamp:o} {HostName} {ProcessName} {ProcessId} - Hello World\r\nGoodbye World", memTarget.Logs[0]);
+                Assert.Equal($"<14>1 {logEvent.TimeStamp:o} {HostName} {ProcessName} {ProcessId} - - Hello World\r\nGoodbye World", memTarget.Logs[0]);
             }
         }
 
@@ -177,7 +177,7 @@ namespace NLog.Targets.Network
                 logger.Log(logEvent);
 
                 Assert.Single(memTarget.Logs);
-                Assert.Equal($"{priValue}1 {logEvent.TimeStamp:o} {HostName} {ProcessName} {ProcessId} - {logEvent.Message}", memTarget.Logs[0]);
+                Assert.Equal($"{priValue}1 {logEvent.TimeStamp:o} {HostName} {ProcessName} {ProcessId} - - {logEvent.Message}", memTarget.Logs[0]);
             }
         }
 
@@ -192,7 +192,7 @@ namespace NLog.Targets.Network
                 logger.Log(logEvent);
 
                 Assert.Single(memTarget.Logs);
-                Assert.Equal($"<14>1 {logEvent.TimeStamp:o} {HostName} {ProcessName} {ProcessId} - {logEvent.Message}", memTarget.Logs[0]);
+                Assert.Equal($"<14>1 {logEvent.TimeStamp:o} {HostName} {ProcessName} {ProcessId} - - {logEvent.Message}", memTarget.Logs[0]);
             }
         }
 
