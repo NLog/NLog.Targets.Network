@@ -491,19 +491,15 @@ namespace NLog.Layouts
 
         internal static decimal ToUnixTimeStamp(DateTime timeStamp)
         {
-            return Convert.ToDecimal(timeStamp.ToUniversalTime().Subtract(UnixDateStart).TotalSeconds);
+            return (timeStamp.ToUniversalTime() - UnixDateStart).Ticks / (decimal)TimeSpan.TicksPerSecond;
         }
 
         internal static SyslogLevel ToSyslogLevel(LogLevel logLevel)
         {
-            try
-            {
-                return _logLevelMapping[logLevel.Ordinal];
-            }
-            catch (IndexOutOfRangeException)
-            {
-                return SyslogLevel.Emergency;
-            }
+            var ordinal = logLevel.Ordinal;
+            return (uint)ordinal < (uint)_logLevelMapping.Length
+                ? _logLevelMapping[ordinal]
+                : NLog.Layouts.SyslogLevel.Emergency;
         }
 
         private static readonly SyslogLevel[] _logLevelMapping = new []
