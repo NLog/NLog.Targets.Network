@@ -367,7 +367,7 @@ namespace NLog.Layouts
 
                 if (string.IsNullOrEmpty(structuredDataId))
                 {
-                    target.Append(']'); // SD-Element has values
+                    target.Append(']'); // SD-Element has some value
                 }
                 else
                 {

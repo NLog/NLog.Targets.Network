@@ -5,7 +5,7 @@
     <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' AND '$(VisualStudioVersion)' &lt; '17.0' ">net35;net46;net471;netstandard2.0</TargetFrameworks>
     <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' ">net35;net46;net471;netstandard2.0;netstandard2.1</TargetFrameworks>
 
-    <VersionPrefix>6.1.4</VersionPrefix>
+    <VersionPrefix>6.1.5</VersionPrefix>
     <AssemblyVersion>6.0.0.0</AssemblyVersion>
     <!-- Strong AssemblyVersion must be fixed on 6.0.0.0 -->
     <AppVeyorBuildNumber>$(APPVEYOR_BUILD_NUMBER)</AppVeyorBuildNumber>
@@ -24,14 +24,10 @@
     <PackageReleaseNotes>
 Changelog:
 
-- SyslogLayout - Changed to use RFC5424 as default
-- GelfLayout - Caller FileName without AOT warning
-- SplunkLayout - Changed default SourceType to _json
-- Replaced obsolete WebRequest with HttpClient in NetworkTarget (.NET v3.5 no longer supports HTTP / HTTPS)
-- Updated to NLog 6.1.4
+- SyslogLayout - Rfc5424 should output NilValue when empty SD Element
     </PackageReleaseNotes>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageTags>NLog;TCPIP;TCP;UDP;Network;logging;log;GELF;Syslog;Splunk;Log4JXml</PackageTags>
+    <PackageTags>NLog;TCPIP;TCP;UDP;Network;logging;log;Syslog;GELF;Graylog;Splunk;Log4JXml</PackageTags>
     <PackageIcon>N.png</PackageIcon>
     <PackageProjectUrl>https://github.com/NLog/NLog.Targets.Network</PackageProjectUrl>
     <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
@@ -81,7 +77,7 @@ Changelog:
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.300" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.400" PrivateAssets="All" />
     <PackageReference Include="NLog" Version="6.1.4" />
   </ItemGroup>
 
