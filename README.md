@@ -11,7 +11,7 @@ See the [NLog Wiki - Network Target](https://github.com/NLog/NLog/wiki/Network-t
 
 ## NLog Syslog Target
 
-NLog Syslog Target combines the NLog NetworkTarget with NLog SyslogLayout.
+NLog Syslog Target combines the NLog NetworkTarget with NLog SyslogLayout Rfc5424 / Rfc3164.
 
 See the [NLog Wiki - Syslog Target](https://github.com/NLog/NLog/wiki/Syslog-target) for available options and examples.
 
