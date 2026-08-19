@@ -273,7 +273,7 @@ namespace NLog.Layouts
 
         internal static decimal ToUnixTimeStamp(DateTime timeStamp)
         {
-            return Convert.ToDecimal(timeStamp.ToUniversalTime().Subtract(UnixDateStart).TotalSeconds);
+            return (timeStamp.ToUniversalTime() - UnixDateStart).Ticks / (decimal)TimeSpan.TicksPerSecond;
         }
 
         private int LookupNamedAttributeIndex(string attributeName)
