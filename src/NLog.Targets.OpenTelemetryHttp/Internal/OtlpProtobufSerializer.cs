@@ -387,20 +387,29 @@ namespace NLog.Internal
                 return;
             }
 
-            if (value is IList list && recursionDepth < MaxRecursionDepth)
-            {
-                using (BeginSubmessageField(stream, fieldNumber))
-                {
-                    BuildAnyValueArray(stream, list, recursionDepth + 1);
-                }
-                return;
-            }
-
             if (value is IDictionary dict && recursionDepth < MaxRecursionDepth)
             {
                 using (BeginSubmessageField(stream, fieldNumber))
                 {
                     BuildAnyValueDictionary(stream, dict, recursionDepth + 1);
+                }
+                return;
+            }
+
+            if (value is IEnumerable<KeyValuePair<string, object>> items && recursionDepth < MaxRecursionDepth)
+            {
+                using (BeginSubmessageField(stream, fieldNumber))
+                {
+                    BuildAnyValueDictionary(stream, items, recursionDepth + 1);
+                }
+                return;
+            }
+
+            if (value is IList list && recursionDepth < MaxRecursionDepth)
+            {
+                using (BeginSubmessageField(stream, fieldNumber))
+                {
+                    BuildAnyValueArray(stream, list, recursionDepth + 1);
                 }
                 return;
             }
@@ -442,6 +451,28 @@ namespace NLog.Internal
                 finally
                 {
                     (enumerator as IDisposable)?.Dispose();
+                }
+            }
+        }
+
+        private static void BuildAnyValueDictionary(MemoryStream stream, IEnumerable<KeyValuePair<string, object>> items, int recursionDepth = 0)
+        {
+            // AnyValue { KeyValueList kvlist_value = 6 }
+            // KeyValueList { repeated KeyValue values = 1 }
+
+            int collectionCount = 0;
+
+            using (BeginSubmessageField(stream, 6))
+            {
+                foreach (var item in items)
+                {
+                    if (string.IsNullOrEmpty(item.Key))
+                        continue;
+
+                    if (++collectionCount > MaxCollectionItems)
+                        break;
+
+                    WriteKeyValue(stream, 1, item.Key, item.Value, recursionDepth);
                 }
             }
         }

@@ -652,6 +652,30 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
         }
 
         [Fact]
+        public void AnyValue_Expando_Nested_EncodedAsDictionaryValueField6()
+        {
+            var payload = new List<KeyValuePair<string, object>>
+            {
+                new KeyValuePair<string, object>("key1", "value1"),
+                new KeyValuePair<string, object>("key2", 42L),
+                new KeyValuePair<string, object>("key3", true),
+            };
+
+            var output = SerializeWithProperty("map", payload);
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValueWrapper = logRecordAttributes["map"];
+
+            // LogRecord.attributes → KeyValue.value (AnyValue)
+            // AnyValue.kvlist_value = 6 (map encoded as KeyValueList)
+            var map = anyValueWrapper.GetField(6).AsMessage().GetFieldValues(1); // KeyValueList { repeated KeyValue values = 1 }
+
+            // key1 → AnyValue.string_value = 1
+            Assert.Equal("value1", map["key1"].GetField(1).AsString());
+            Assert.Equal(42L, map["key2"].GetField(3).AsInt64());
+            Assert.Equal(1L, map["key3"].GetField(2).AsInt64());
+        }
+
+        [Fact]
         public void AnyValue_NullValue_AttributeKeyPresentWithoutValueField()
         {
             var output = SerializeWithProperty("n", (object)null);
