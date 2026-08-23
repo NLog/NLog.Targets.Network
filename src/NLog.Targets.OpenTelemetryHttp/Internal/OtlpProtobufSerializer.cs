@@ -75,6 +75,28 @@ namespace NLog.Internal
             return new OtlpBatchBuilder(this, output);
         }
 
+
+        internal static class AnyValueField
+        {
+            internal const int StringValue = 1;
+            internal const int BoolValue = 2;
+            internal const int IntValue = 3;
+            internal const int DoubleValue = 4;
+            internal const int ArrayValue = 5;
+            internal const int KvListValue = 6;
+            internal const int BytesValue = 7;
+        }
+
+        internal static class  WireType
+        {
+            internal const int Varint = 0;
+            internal const int Fixed64 = 1;
+            internal const int LengthDelimited = 2;
+            internal const int StartGroup = 3;
+            internal const int EndGroup = 4;
+            internal const int Fixed32 = 5;
+        }
+
         /// <summary>
         /// Builds a LogRecord protobuf message for a single log event.
         /// </summary>
@@ -267,7 +289,7 @@ namespace NLog.Internal
 
             using (BeginSubmessageField(stream, fieldNumber, maxByteCount))
             {
-                WriteStringField(stream, 1, value, maxByteCount);
+                WriteStringField(stream, AnyValueField.StringValue, value, maxByteCount);
             }
         }
 
@@ -288,7 +310,7 @@ namespace NLog.Internal
                 var maxByteCount = Encoding.UTF8.GetMaxByteCount(charsWritten);
                 using (BeginSubmessageField(stream, fieldNumber, maxByteCount))
                 {
-                    WriteStringFieldSpan(stream, 1, formatted, maxByteCount);
+                    WriteStringFieldSpan(stream, AnyValueField.StringValue, formatted, maxByteCount);
                 }
             }
             else
@@ -313,9 +335,9 @@ namespace NLog.Internal
                 {
                     case TypeCode.Boolean:
                         // bool_value field: tag(1) + varint(1) = 2 bytes
-                        using (BeginSubmessageField(stream, fieldNumber, 2))
+                        using (BeginSubmessageField(stream, fieldNumber, maxByteCount: 2))
                         {
-                            WriteVarintField(stream, 2, convertible.ToBoolean(System.Globalization.CultureInfo.InvariantCulture) ? 1UL : 0UL);
+                            WriteVarintField(stream, AnyValueField.BoolValue, convertible.ToBoolean(System.Globalization.CultureInfo.InvariantCulture) ? 1UL : 0UL);
                         }
                         return;
                     case TypeCode.SByte:
@@ -324,9 +346,9 @@ namespace NLog.Internal
                     case TypeCode.Int64:
                         // int_value field: negative values sign-extend to 10 varint bytes: tag(1) + 10 = 11 bytes
                         var varInt = unchecked((ulong)convertible.ToInt64(System.Globalization.CultureInfo.InvariantCulture));
-                        using (BeginSubmessageField(stream, fieldNumber, 11))
+                        using (BeginSubmessageField(stream, fieldNumber, maxByteCount: 11))
                         {
-                            WriteVarintField(stream, 3, varInt);
+                            WriteVarintField(stream, AnyValueField.IntValue, varInt);
                         }
                         return;
                     case TypeCode.Byte:
@@ -335,9 +357,9 @@ namespace NLog.Internal
                     case TypeCode.UInt64:
                         // int_value field: max ulong → 10 varint bytes: tag(1) + 10 = 11 bytes
                         var varUInt = convertible.ToUInt64(System.Globalization.CultureInfo.InvariantCulture);
-                        using (BeginSubmessageField(stream, fieldNumber, 11))
+                        using (BeginSubmessageField(stream, fieldNumber, maxByteCount: 11))
                         {
-                            WriteVarintField(stream, 3, varUInt);
+                            WriteVarintField(stream, AnyValueField.IntValue, varUInt);
                         }
                         return;
                     case TypeCode.Single:
@@ -345,9 +367,9 @@ namespace NLog.Internal
                     case TypeCode.Decimal:
                         // double_value field: fixed64 → tag(1) + 8 bytes = 9 bytes
                         var doubleVal = convertible.ToDouble(System.Globalization.CultureInfo.InvariantCulture);
-                        using (BeginSubmessageField(stream, fieldNumber, 9))
+                        using (BeginSubmessageField(stream, fieldNumber, maxByteCount: 9))
                         {
-                            WriteFixed64Field(stream, 4, unchecked((ulong)BitConverter.DoubleToInt64Bits(doubleVal)));
+                            WriteFixed64Field(stream, AnyValueField.DoubleValue, unchecked((ulong)BitConverter.DoubleToInt64Bits(doubleVal)));
                         }
                         return;
                     case TypeCode.DateTime:
@@ -431,7 +453,7 @@ namespace NLog.Internal
             // AnyValue { KeyValueList kvlist_value = 6 }
             // KeyValueList { repeated KeyValue values = 1 }
             int collectionCount = 0;
-            using (BeginSubmessageField(stream, 6))
+            using (BeginSubmessageField(stream, AnyValueField.KvListValue))
             {
                 var enumerator = dict.GetEnumerator();
                 try
@@ -462,7 +484,7 @@ namespace NLog.Internal
 
             int collectionCount = 0;
 
-            using (BeginSubmessageField(stream, 6))
+            using (BeginSubmessageField(stream, AnyValueField.KvListValue))
             {
                 foreach (var item in items)
                 {
@@ -482,7 +504,7 @@ namespace NLog.Internal
             // AnyValue { ArrayValue array_value = 5 }
             // ArrayValue { repeated AnyValue values = 1 }
             int listCount = list.Count < MaxCollectionItems ? list.Count : MaxCollectionItems;
-            using (BeginSubmessageField(stream, 5))
+            using (BeginSubmessageField(stream, AnyValueField.ArrayValue))
             {
                 for (int i = 0; i < listCount; i++)
                 {
@@ -496,7 +518,7 @@ namespace NLog.Internal
             // AnyValue { ArrayValue array_value = 5 }
             // ArrayValue { repeated AnyValue values = 1 }
             int collectionCount = 0;
-            using (BeginSubmessageField(stream, 5))
+            using (BeginSubmessageField(stream, AnyValueField.ArrayValue))
             {
                 var enumerator = enumerable.GetEnumerator();
                 try
@@ -566,13 +588,13 @@ namespace NLog.Internal
 
         private static void WriteVarintField(MemoryStream stream, int fieldNumber, ulong value)
         {
-            WriteTag(stream, fieldNumber, 0);
+            WriteTag(stream, fieldNumber, WireType.Varint);
             WriteVarint(stream, value);
         }
 
         private static void WriteFixed64Field(MemoryStream stream, int fieldNumber, ulong value)
         {
-            WriteTag(stream, fieldNumber, 1);
+            WriteTag(stream, fieldNumber, WireType.Fixed64);
 #if NET || NETSTANDARD2_1_OR_GREATER
             var pos = (int)stream.Position;
             stream.SetLength(pos + 8);
@@ -609,7 +631,7 @@ namespace NLog.Internal
             // 1-byte length for short strings (≤127 bytes), 2-byte padded varint for medium, 4-byte for large.
             // actualByteCount <= maxByteCount so the selected size always fits.
             var varintSize = maxByteCount > SubmessageWriter.MaxContent2ByteThreshold ? 4 : (maxByteCount > 127 ? 2 : 1);
-            WriteTag(stream, fieldNumber, 2);
+            WriteTag(stream, fieldNumber, WireType.LengthDelimited);
             var varintPos = (int)stream.Position;
             var contentStart = varintPos + varintSize;
             stream.SetLength(contentStart + maxByteCount);
@@ -651,7 +673,7 @@ namespace NLog.Internal
             // 1-byte length for short strings (≤127 bytes), 2-byte padded varint for medium, 4-byte for large.
             // actualByteCount <= maxByteCount so the selected size always fits.
             var varintSize = maxByteCount > SubmessageWriter.MaxContent2ByteThreshold ? 4 : (maxByteCount > 127 ? 2 : 1);
-            WriteTag(stream, fieldNumber, 2);
+            WriteTag(stream, fieldNumber, WireType.LengthDelimited);
             var varintPos = (int)stream.Position;
             var contentStart = varintPos + varintSize;
             stream.SetLength(contentStart + maxByteCount);
@@ -783,7 +805,7 @@ namespace NLog.Internal
             if (traceId == default)
                 return;
 
-            WriteTag(stream, fieldNumber, 2);
+            WriteTag(stream, fieldNumber, WireType.LengthDelimited);
             WriteVarint(stream, 16); // TraceId = 16 bytes
 
             var pos = (int)stream.Position;
@@ -799,7 +821,7 @@ namespace NLog.Internal
             if (spanId == default)
                 return;
 
-            WriteTag(stream, fieldNumber, 2);
+            WriteTag(stream, fieldNumber, WireType.LengthDelimited);
             WriteVarint(stream, 8); // SpanId = 8 bytes
 
             var pos = (int)stream.Position;

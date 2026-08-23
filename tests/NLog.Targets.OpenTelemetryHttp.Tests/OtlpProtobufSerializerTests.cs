@@ -485,7 +485,7 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
         }
 
         [Fact]
-        public void AnyValue_NegativeInt_EncodedAsVarintField3WithZigzagTwosComplement()
+        public void AnyValue_NegativeInt_EncodedAsVarintField3UsingTwosComplement()
         {
             var output = SerializeWithProperty("neg", -1);
             var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);

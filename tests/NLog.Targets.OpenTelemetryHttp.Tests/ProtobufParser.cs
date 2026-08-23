@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using NLog.Internal;
 
 namespace NLog.Targets.OpenTelemetryHttp.Tests
 {
@@ -21,16 +22,16 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
                 {
                     switch (WireType)
                     {
-                        case 0: value = AsInt64().ToString(); break;
-                        case 1: value = Data.Length == 8 ? AsUInt64().ToString() : null; break;
-                        case 2: value = AsMessage().Count > 0 ? $"{AsMessage().Count} Fields" : AsString(); break;
-                        case 4: value = BitConverter.ToUInt32(Data, 0).ToString(); break;
+                        case OtlpProtobufSerializer.WireType.Varint: value = AsInt64().ToString(); break;
+                        case OtlpProtobufSerializer.WireType.Fixed64: value = Data.Length == 8 ? AsUInt64().ToString() : null; break;
+                        case OtlpProtobufSerializer.WireType.LengthDelimited: value = AsMessage().Count > 0 ? $"{AsMessage().Count} Fields" : AsString(); break;
+                        case OtlpProtobufSerializer.WireType.Fixed32: value = BitConverter.ToUInt32(Data, 0).ToString(); break;
                         default: value = $"{Data.Length} bytes"; break;
                     };
                 }
                 catch
                 {
-                    value = WireType == 2 ? AsString() : $"{Data.Length} bytes";
+                    value = WireType == OtlpProtobufSerializer.WireType.LengthDelimited ? AsString() : $"{Data.Length} bytes";
                 }
 
                 return $"Field {FieldNumber} (WireType={WireType}, Value={value})";
@@ -38,13 +39,13 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
 
             public string AsString()
             {
-                EnsureWireType(2);
+                EnsureWireType(OtlpProtobufSerializer.WireType.LengthDelimited);
                 return Encoding.UTF8.GetString(Data);
             }
 
             public List<ProtobufField> AsMessage()
             {
-                EnsureWireType(2);
+                EnsureWireType(OtlpProtobufSerializer.WireType.LengthDelimited);
                 return ReadProtobufFields(Data);
             }
 
@@ -56,7 +57,7 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
 
                 var value = fields[0];
                 // 1 = string, 2 = bool, 3 = int, 4 = double, 5 = array, 6 = kvlist
-                if (value.FieldNumber < 1 || value.FieldNumber > 6)
+                if (value.FieldNumber < OtlpProtobufSerializer.AnyValueField.StringValue || value.FieldNumber > OtlpProtobufSerializer.AnyValueField.KvListValue)
                     throw new InvalidOperationException($"Invalid AnyValue field {value.FieldNumber} in Field {FieldNumber}");
                 return value;
             }
@@ -64,34 +65,34 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
             public string AsAnyValueString()
             {
                 var value = AsAnyValue();
-                if (value.FieldNumber != 1)
-                    throw new InvalidOperationException($"Expected AnyValue.string_value (field 1), but found field {value.FieldNumber}");
+                if (value.FieldNumber != OtlpProtobufSerializer.AnyValueField.StringValue)
+                    throw new InvalidOperationException($"Expected AnyValue.string_value (field {OtlpProtobufSerializer.AnyValueField.StringValue}), but found field {value.FieldNumber}");
                 return value.AsString();
             }
 
             public long AsInt64()
             {
-                EnsureWireType(0);
+                EnsureWireType(OtlpProtobufSerializer.WireType.Varint);
                 int offset = 0;
                 return (long)ReadVarint(Data, ref offset);
             }
 
             public ulong AsUInt64()
             {
-                EnsureWireType(1); // fixed64
+                EnsureWireType(OtlpProtobufSerializer.WireType.Fixed64);
                 EnsureDataLength(8);
                 return BitConverter.ToUInt64(Data, 0);
             }
 
             public double AsDouble()
             {
-                EnsureWireType(1);  // fixed64
+                EnsureWireType(OtlpProtobufSerializer.WireType.Fixed64);
                 EnsureDataLength(8);
                 return BitConverter.ToDouble(Data, 0);
             }
 
             public ProtobufField GetField(int fieldNumber) => ProtobufExtensions.GetField(AsMessage(), fieldNumber);
-            public List<ProtobufField> AsArrayValue() => GetField(5).AsMessage();
+            public List<ProtobufField> AsArrayValue() => GetField(OtlpProtobufSerializer.AnyValueField.ArrayValue).AsMessage();
 
             private void EnsureWireType(int expected)
             {
@@ -162,24 +163,24 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
                 byte[] fieldData;
                 switch (wireType)
                 {
-                    case 0: // varint
+                    case OtlpProtobufSerializer.WireType.Varint:
                         var start = offset;
                         ReadVarint(data, ref offset);
                         fieldData = new byte[offset - start];
                         Array.Copy(data, start, fieldData, 0, fieldData.Length);
                         break;
-                    case 1: // 64-bit fixed
+                    case OtlpProtobufSerializer.WireType.Fixed64:
                         fieldData = new byte[8];
                         Array.Copy(data, offset, fieldData, 0, 8);
                         offset += 8;
                         break;
-                    case 2: // length-delimited
+                    case OtlpProtobufSerializer.WireType.LengthDelimited:
                         var length = (int)ReadVarint(data, ref offset);
                         fieldData = new byte[length];
                         Array.Copy(data, offset, fieldData, 0, length);
                         offset += length;
                         break;
-                    case 5: // 32-bit fixed
+                    case OtlpProtobufSerializer.WireType.Fixed32:
                         fieldData = new byte[4];
                         Array.Copy(data, offset, fieldData, 0, 4);
                         offset += 4;
@@ -236,9 +237,9 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
                 if (field.FieldNumber != fieldNumber)
                     continue;
 
-                if (field.WireType != 2)
+                if (field.WireType != OtlpProtobufSerializer.WireType.LengthDelimited)
                     throw new InvalidOperationException(
-                        $"Expected KeyValue to be length-delimited (wire type 2), got {field.WireType}");
+                        $"Expected KeyValue to be length-delimited (wire type {OtlpProtobufSerializer.WireType.LengthDelimited}), got {field.WireType}");
 
                 var kvFields = field.AsMessage();
                 var key = kvFields.GetField(1).AsString();
