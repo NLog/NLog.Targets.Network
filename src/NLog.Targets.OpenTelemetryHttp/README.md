@@ -38,6 +38,11 @@ LogManager.Setup().SetupExtensions(ext => {
 Typical endpoint URL is `http://localhost:4318/v1/logs`.
 
 ```xml
+<nlog>
+<extensions>
+    <add assembly="NLog.Targets.OpenTelemetryHttp"/>
+</extensions>
+
 <targets>
     <target xsi:type="OpenTelemetry"
             name="otlp"
@@ -47,6 +52,7 @@ Typical endpoint URL is `http://localhost:4318/v1/logs`.
 <rules>
     <logger name="*" minlevel="Info" writeTo="otlp" />
 </rules>
+</nlog>
 ```
 
 Supports the standard OpenTelemetry environment variables as fallback defaults:
