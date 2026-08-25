@@ -53,6 +53,7 @@ LogManager.Setup().SetupExtensions(ext => {
 <rules>
     <logger name="*" minlevel="Info" writeTo="http" />
 </rules>
+</nlog>
 ```
 
 ## Parameters
