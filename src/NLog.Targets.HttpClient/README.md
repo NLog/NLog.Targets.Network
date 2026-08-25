@@ -37,11 +37,17 @@ LogManager.Setup().SetupExtensions(ext => {
 ## Configuration Example
 
 ```xml
+<nlog>
+<extensions>
+    <add assembly="NLog.Targets.HttpClient"/>
+</extensions>
+
 <targets>
     <target xsi:type="HttpClient"
             name="http"
-            url="https://api.example.com/logs"
-            layout="${json-encode:${message}}" />
+            url="https://api.example.com/logs">
+       <layout xsi:type="JsonLayout" includeEventProperties="true" />
+    </target>
 </targets>
 
 <rules>
