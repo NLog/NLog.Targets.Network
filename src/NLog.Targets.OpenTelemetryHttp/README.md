@@ -85,7 +85,7 @@ Supports the standard OpenTelemetry environment variables as fallback defaults:
 
 | Batching and Retry       | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
-| _batchSize_              | `200`               | Maximum number of log events to send in a single HTTP payload. Increase on high-latency connections. |
+| _batchSize_              | `200`               | Maximum number of log events to send in a single HTTP payload.                    |
 | _compress_               | `None`              | Optional compression of the OTLP/HTTP request payload. Supports None, GZip, and GZipFast. |
 | _maxPayloadSizeBytes_    | `40960`             | Max payload size before splitting into multiple HTTP requests. Remember `BatchSize` |
 | _taskDelayMilliseconds_  | `50`                | Delay before processing queued log events. Increasing value can improve batching. |
