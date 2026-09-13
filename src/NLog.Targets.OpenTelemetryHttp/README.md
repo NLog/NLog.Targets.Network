@@ -6,7 +6,7 @@
 
 NLog `OpenTelemetry` target for exporting log events to an OpenTelemetry Collector or any OTLP/HTTP-compatible endpoint.
 
-Primarily for applications that already use NLog, but do not have the full OpenTelemetry SDK pipeline configured to capture NLog log events.
+Primarily for applications that already use NLog, as the target serializes NLog log events directly to the OTLP protobuf format without depending on the OpenTelemetry SDK.
 
 If having trouble with output, then check [NLog InternalLogger](https://github.com/NLog/NLog/wiki/Internal-Logging) for clues. See also [Troubleshooting NLog](https://github.com/NLog/NLog/wiki/Logging-Troubleshooting).
 
