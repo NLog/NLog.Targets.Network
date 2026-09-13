@@ -90,7 +90,7 @@ Supports the standard OpenTelemetry environment variables as fallback defaults:
 | _maxPayloadSizeBytes_    | `40960`             | Max payload size before splitting into multiple HTTP requests. Remember `BatchSize` |
 | _taskDelayMilliseconds_  | `50`                | Delay before processing queued log events. Increasing value can improve batching. |
 | _taskTimeoutSeconds_     | `150`               | Maximum time in seconds before cancellation of HTTP request.                      |
-| _retryCount_             | `0`                 | Number of retry attempts for failed write operations.                             |
+| _retryCount_             | `3`                 | Number of retry attempts for failed write operations.                             |
 | _retryDelayMilliseconds_ | `2500`              | Initial delay before retry after failed request. Delay doubles for each retry.    |
 | _queueLimit_             | `10000`             | Maximum number of pending log events allowed in the internal queue.               |
 | _overflowAction_         | `Discard`           | Action taken when the internal queue reaches its limit.                           |
