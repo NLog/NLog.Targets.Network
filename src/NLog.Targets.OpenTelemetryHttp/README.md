@@ -3,10 +3,11 @@
 [![Version](https://badge.fury.io/nu/NLog.Targets.OpenTelemetryHttp.svg)](https://www.nuget.org/packages/NLog.Targets.OpenTelemetryHttp)
 [![AppVeyor](https://img.shields.io/appveyor/ci/NLog/NLog-Targets-Network/master.svg)](https://ci.appveyor.com/project/NLog/NLog-Targets-Network/branch/master)
 
-
 NLog `OpenTelemetry` target for exporting log events to an OpenTelemetry Collector or any OTLP/HTTP-compatible endpoint.
 
-Primarily for applications that already use NLog, and want to send NLog log events directly using OTLP protobuf format without depending on the OpenTelemetry SDK pipeline.
+Designed for applications that already use NLog and want to export log events directly using the OTLP protobuf format, without depending on the OpenTelemetry SDK logging pipeline.
+
+Automatically captures TraceId and SpanId for distributed-tracing correlation and exports NLog Event Properties as structured OpenTelemetry log attributes.
 
 If having trouble with output, then check [NLog InternalLogger](https://github.com/NLog/NLog/wiki/Internal-Logging) for clues. See also [Troubleshooting NLog](https://github.com/NLog/NLog/wiki/Logging-Troubleshooting).
 
