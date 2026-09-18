@@ -237,6 +237,13 @@ namespace NLog.Targets
         /// <docgen category='Connection Options' order='16' />
         public Layout? SslCertificatePassword { get; set; }
 
+        /// <summary>throw new NLogRuntimeException($"{GetType()}: Failed loading SSL certificate", ex);
+        /// Gets or sets the thumbprint of a client SSL certificate from <see cref="System.Security.Cryptography.X509Certificates.X509Store"/>
+        /// Searches CurrentUser first, then LocalMachine. Used when <see cref="SslCertificateFile"/> is not specified.
+        /// </summary>
+        /// <docgen category='Connection Options' order='16' />
+        public Layout? SslCertificateThumbprint { get; set; }
+
         /// <summary>
         /// The number of seconds a connection will remain idle before the first keep-alive probe is sent
         /// </summary>
@@ -646,20 +653,29 @@ namespace NLog.Targets
         private NetworkSender CreateNetworkSender(string address, LogEventInfo logEventInfo)
         {
             System.Security.Cryptography.X509Certificates.X509Certificate2Collection? clientCertificates = null;
-            if (SslCertificateFile != null)
+            if (SslCertificateFile != null || SslCertificateThumbprint != null)
             {
-                var sslCertificateFile = SslCertificateFile.Render(logEventInfo) ?? string.Empty;
-                if (!_sslCertificateCache.TryGetCertificate(sslCertificateFile, out clientCertificates))
+                var sslCertificateFile = SslCertificateFile?.Render(logEventInfo) ?? string.Empty;
+                var sslCertificateThumbprint = SslCertificateThumbprint?.Render(logEventInfo) ?? string.Empty;
+                if (!string.IsNullOrEmpty(sslCertificateFile) || !string.IsNullOrEmpty(sslCertificateThumbprint))
                 {
-                    var sslCertificatePassword = SslCertificatePassword?.Render(logEventInfo) ?? string.Empty;
                     try
                     {
-                        clientCertificates = _sslCertificateCache.LoadCertificate(sslCertificateFile, sslCertificatePassword);
+                        var sslCertificatePassword = SslCertificatePassword?.Render(logEventInfo) ?? string.Empty;
+                        clientCertificates = _sslCertificateCache.LoadCertificate(sslCertificateFile, sslCertificatePassword, sslCertificateThumbprint);
                     }
                     catch (Exception ex)
                     {
-                        InternalLogger.Error(ex, "{0}: Failed loading SSL certificate from file: {1}", this, sslCertificateFile);
-                        throw new NLogRuntimeException($"{GetType()}: Failed loading SSL certificate from file: {sslCertificateFile}", ex);
+                        if (string.IsNullOrEmpty(sslCertificateFile))
+                        {
+                            InternalLogger.Error(ex, "{0}: Failed loading SSL certificate", this);
+                            throw new NLogRuntimeException($"{GetType()}: Failed loading SSL certificate", ex);
+                        }
+                        else
+                        {
+                            InternalLogger.Error(ex, "{0}: Failed loading SSL certificate from file: {1}", this, sslCertificateFile);
+                            throw new NLogRuntimeException($"{GetType()}: Failed loading SSL certificate from file: {sslCertificateFile}", ex);
+                        }
                     }
                 }
             }

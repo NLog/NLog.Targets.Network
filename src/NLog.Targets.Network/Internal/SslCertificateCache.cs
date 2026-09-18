@@ -52,26 +52,44 @@ namespace NLog.Internal
                 return true;
             }
 
-            var cache = _cache;
-            if (cache != null && cache.TryGetValue(sslCertificateFile, out clientCertificates))
-                return true;  // Safe to lookup without lock, since immutable collection
-
-            clientCertificates = null;
-            return false;
+            return TryGetCachedCertificate(sslCertificateFile, out clientCertificates);
         }
 
-        public X509Certificate2Collection? LoadCertificate(string sslCertificateFile, string sslCertificatePassword)
+        public X509Certificate2Collection? LoadCertificate(string sslCertificateFile, string sslCertificatePassword, string sslCertificateThumbprint)
         {
-            if (TryGetCertificate(sslCertificateFile, out var clientCertificates))
+            var cacheKey = ResolveCacheKey(sslCertificateFile, sslCertificateThumbprint);
+            if (string.IsNullOrEmpty(cacheKey))
+                return null;
+
+            if (TryGetCachedCertificate(cacheKey, out var clientCertificates))
                 return clientCertificates;
 
             lock (_cacheLock)
             {
-                if (_cache?.TryGetValue(sslCertificateFile, out clientCertificates) == true)
+                if (_cache?.TryGetValue(cacheKey, out clientCertificates) == true)
                     return clientCertificates;
 
-                InternalLogger.Debug("Loading SSL certificate from file: {0}", sslCertificateFile);
-                clientCertificates = LoadCertificateFromFile(sslCertificateFile, sslCertificatePassword);
+                if (!string.IsNullOrEmpty(sslCertificateFile))
+                {
+                    sslCertificateFile = System.IO.Path.GetFullPath(sslCertificateFile);
+                    InternalLogger.Debug("Loading SSL certificate from file: {0}", sslCertificateFile);
+                    clientCertificates = LoadCertificateFromFile(sslCertificateFile, sslCertificatePassword);
+                }
+                else if (!string.IsNullOrEmpty(sslCertificateThumbprint))
+                {
+                    InternalLogger.Debug("Loading SSL certificate from certificate store. Thumbprint: {0}", sslCertificateThumbprint);
+                    clientCertificates = LoadCertificateFromStore(StoreLocation.CurrentUser, sslCertificateThumbprint);
+                    if (clientCertificates.Count == 0)
+                        clientCertificates = LoadCertificateFromStore(StoreLocation.LocalMachine, sslCertificateThumbprint);
+                    if (clientCertificates.Count == 0)
+                        throw new NLogRuntimeException($"SSL certificate with thumbprint '{NormalizeThumbprint(sslCertificateThumbprint)}' not found in CurrentUser or LocalMachine My store");
+                }
+                else
+                {
+                    return new X509Certificate2Collection();
+                }
+
+                LogLoadedCertificates(clientCertificates);
 
                 var newCache = new Dictionary<string, X509Certificate2Collection>((_cache?.Count ?? 0) + 1);
                 if (_cache != null)
@@ -79,10 +97,31 @@ namespace NLog.Internal
                     foreach (var existingCertificate in _cache)
                         newCache.Add(existingCertificate.Key, existingCertificate.Value);
                 }
-                newCache[sslCertificateFile] = clientCertificates;
+                newCache[cacheKey] = clientCertificates;
                 _cache = newCache;
                 return clientCertificates;
             }
+        }
+
+        private bool TryGetCachedCertificate(string cacheKey, out X509Certificate2Collection? clientCertificates)
+        {
+            var cache = _cache;
+            if (cache != null && cache.TryGetValue(cacheKey, out clientCertificates))
+                return true;  // Safe to lookup without lock, since immutable collection
+
+            clientCertificates = null;
+            return false;
+        }
+
+        private static string ResolveCacheKey(string sslCertificateFile, string sslCertificateThumbprint)
+        {
+            if (!string.IsNullOrEmpty(sslCertificateFile))
+                return sslCertificateFile;
+
+            if (!string.IsNullOrEmpty(sslCertificateThumbprint))
+                return "store:" + NormalizeThumbprint(sslCertificateThumbprint);
+
+            return string.Empty;
         }
 
         public void Clear()
@@ -90,11 +129,25 @@ namespace NLog.Internal
             _cache = null;
         }
 
+        private static void LogLoadedCertificates(X509Certificate2Collection clientCertificates)
+        {
+            var utcNow = DateTime.UtcNow;
+            var warnUntil = utcNow.AddDays(1);
+            for (int i = 0; i < clientCertificates.Count; i++)
+            {
+                var certificate = clientCertificates[i];
+                InternalLogger.Debug("Loaded SSL certificate: Subject={0}, Thumbprint={1}", certificate.Subject, certificate.Thumbprint);
+
+                var notAfterUtc = certificate.NotAfter.ToUniversalTime();
+                if (notAfterUtc <= utcNow)
+                    InternalLogger.Warn("SSL certificate has expired: Subject={0}, Thumbprint={1}, NotAfter={2}", certificate.Subject, certificate.Thumbprint, certificate.NotAfter);
+                else if (notAfterUtc <= warnUntil)
+                    InternalLogger.Info("SSL certificate expires soon: Subject={0}, Thumbprint={1}, NotAfter={2}", certificate.Subject, certificate.Thumbprint, certificate.NotAfter);
+            }
+        }
+
         internal static X509Certificate2Collection LoadCertificateFromFile(string sslCertificateFile, string sslCertificatePassword)
         {
-            if (string.IsNullOrEmpty(sslCertificateFile))
-                return new X509Certificate2Collection();
-
             if (sslCertificateFile.EndsWith(".pem", StringComparison.OrdinalIgnoreCase))
             {
                 return LoadCertificateFromPem(sslCertificateFile, sslCertificatePassword);
@@ -105,12 +158,48 @@ namespace NLog.Internal
             }
         }
 
+        internal static X509Certificate2Collection LoadCertificateFromStore(StoreLocation storeLocation, string thumbprint)
+        {
+            thumbprint = NormalizeThumbprint(thumbprint);
+            if (string.IsNullOrEmpty(thumbprint))
+                return new X509Certificate2Collection();
+
+#if !NET35
+            using (var store = new X509Store(StoreName.My, storeLocation))
+#else
+            var store = new X509Store(StoreName.My, storeLocation);
+#endif
+            {
+                store.Open(OpenFlags.ReadOnly);
+                var found = store.Certificates.Find(X509FindType.FindByThumbprint, thumbprint, false);
+                if (found.Count == 0)
+                    return new X509Certificate2Collection();
+
+                var collection = new X509Certificate2Collection();
+                for (int i = 0; i < found.Count; i++)
+                    collection.Add(new X509Certificate2(found[i]));
+                return collection;
+            }
+        }
+
+        private static string NormalizeThumbprint(string thumbprint)
+        {
+            var builder = new StringBuilder(thumbprint.Length);
+            for (int i = 0; i < thumbprint.Length; i++)
+            {
+                char ch = thumbprint[i];
+                if (!char.IsWhiteSpace(ch) && ch != ':')
+                    builder.Append(char.ToUpperInvariant(ch));
+            }
+            return builder.ToString();
+        }
+
         private static X509Certificate2Collection LoadCertificateFromPem(string fileName, string? password = null)
         {
             using (var reader = new System.IO.StreamReader(new System.IO.FileStream(fileName, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read), Encoding.UTF8))
             {
                 var pem = reader.ReadToEnd();
-                var allCertificates = TryParseAllPemBlocks(pem, "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----");
+                var allCertificates = TryParseAllPemBlocks(pem, "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----", fileName);
                 if (allCertificates.Count == 0)
                     throw new NLogRuntimeException("Invalid PEM format: Missing BEGIN CERTIFICATE header");
 
@@ -119,7 +208,7 @@ namespace NLog.Internal
 #if NET || NETSTANDARD2_1_OR_GREATER
                 try
                 {
-                    var certWithKey = TryAttachPrivateKeyFromPem(pem, leafCertificate, password);
+                    var certWithKey = TryAttachPrivateKeyFromPem(pem, leafCertificate, password, fileName);
                     if (certWithKey != null)
                     {
                         leafCertificate.Dispose();
@@ -143,7 +232,7 @@ namespace NLog.Internal
             }
         }
 
-        private static List<byte[]> TryParseAllPemBlocks(string pem, string header, string footer)
+        private static List<byte[]> TryParseAllPemBlocks(string pem, string header, string footer, string fileName)
         {
             var results = new List<byte[]>();
             int searchFrom = 0;
@@ -158,30 +247,50 @@ namespace NLog.Internal
                 if (end < 0)
                     throw new NLogRuntimeException($"Invalid PEM format: Missing {footer}");
 
-                string base64 = pem.Substring(start, end - start).Replace("\r", "").Replace("\n", "").Trim();
+                string base64 = StripPemWhiteSpace(pem, start, end - start);
                 if (string.IsNullOrEmpty(base64))
                     throw new NLogRuntimeException($"Invalid PEM format: Missing content between {header} and {footer}");
 
-                results.Add(Convert.FromBase64String(base64));
+                try
+                {
+                    results.Add(Convert.FromBase64String(base64));
+                }
+                catch (FormatException ex)
+                {
+                    throw new NLogRuntimeException($"Invalid PEM format: Invalid Base64 content in file: {fileName}", ex);
+                }
                 searchFrom = end + footer.Length;
             }
             return results;
         }
 
-#if NET || NETSTANDARD2_1_OR_GREATER
-        private static byte[]? TryParsePemBlock(string pem, string header, string footer)
+        private static string StripPemWhiteSpace(string pem, int start, int length)
         {
-            var blocks = TryParseAllPemBlocks(pem, header, footer);
+            var builder = new StringBuilder(length);
+            int end = start + length;
+            for (int i = start; i < end; i++)
+            {
+                char ch = pem[i];
+                if (!char.IsWhiteSpace(ch))
+                    builder.Append(ch);
+            }
+            return builder.ToString();
+        }
+
+#if NET || NETSTANDARD2_1_OR_GREATER
+        private static byte[]? TryParsePemBlock(string pem, string header, string footer, string fileName)
+        {
+            var blocks = TryParseAllPemBlocks(pem, header, footer, fileName);
             return blocks.Count > 0 ? blocks[0] : null;
         }
 
-        private static X509Certificate2? TryAttachPrivateKeyFromPem(string pem, X509Certificate2 certificate, string? password)
+        private static X509Certificate2? TryAttachPrivateKeyFromPem(string pem, X509Certificate2 certificate, string? password, string fileName)
         {
-            byte[]? pkcs8Bytes = TryParsePemBlock(pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----");
-            byte[]? rsaPkcs1Bytes = pkcs8Bytes == null ? TryParsePemBlock(pem, "-----BEGIN RSA PRIVATE KEY-----", "-----END RSA PRIVATE KEY-----") : null;
-            byte[]? ecPrivKeyBytes = pkcs8Bytes == null ? TryParsePemBlock(pem, "-----BEGIN EC PRIVATE KEY-----", "-----END EC PRIVATE KEY-----") : null;
+            byte[]? pkcs8Bytes = TryParsePemBlock(pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----", fileName);
+            byte[]? rsaPkcs1Bytes = pkcs8Bytes == null ? TryParsePemBlock(pem, "-----BEGIN RSA PRIVATE KEY-----", "-----END RSA PRIVATE KEY-----", fileName) : null;
+            byte[]? ecPrivKeyBytes = pkcs8Bytes == null ? TryParsePemBlock(pem, "-----BEGIN EC PRIVATE KEY-----", "-----END EC PRIVATE KEY-----", fileName) : null;
             byte[]? encryptedPkcs8Bytes = (pkcs8Bytes == null && rsaPkcs1Bytes == null && ecPrivKeyBytes == null)
-                ? TryParsePemBlock(pem, "-----BEGIN ENCRYPTED PRIVATE KEY-----", "-----END ENCRYPTED PRIVATE KEY-----") : null;
+                ? TryParsePemBlock(pem, "-----BEGIN ENCRYPTED PRIVATE KEY-----", "-----END ENCRYPTED PRIVATE KEY-----", fileName) : null;
 
             if (pkcs8Bytes == null && rsaPkcs1Bytes == null && ecPrivKeyBytes == null && encryptedPkcs8Bytes == null)
                 return null;

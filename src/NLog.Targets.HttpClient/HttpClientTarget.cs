@@ -257,6 +257,22 @@ namespace NLog.Targets
             }
         }
         private Layout? _sslCertificatePassword;
+
+        /// <summary>
+        /// Gets or sets the thumbprint of a client SSL certificate from <see cref="System.Security.Cryptography.X509Certificates.X509Store"/>
+        /// Searches CurrentUser first, then LocalMachine. Used when <see cref="SslCertificateFile"/> is not specified.
+        /// </summary>
+        public Layout? SslCertificateThumbprint
+        {
+            get => _sslCertificateThumbprint;
+            set
+            {
+                if (ReferenceEquals(value, _sslCertificateThumbprint)) return;
+                _sslCertificateThumbprint = value;
+                SignalHttpClientReset();
+            }
+        }
+        private Layout? _sslCertificateThumbprint;
 #endif
 
         /// <summary>
@@ -710,20 +726,30 @@ namespace NLog.Targets
             var handler = new HttpClientHandler();
 
 #if !NETFRAMEWORK || NET471_OR_GREATER
-            if (SslCertificateFile != null)
+            if (SslCertificateFile != null || SslCertificateThumbprint != null)
             {
-                var sslCertificateFile = SslCertificateFile.Render(nullEvent) ?? string.Empty;
-                if (!_sslCertificateCache.TryGetCertificate(sslCertificateFile, out var clientCertificates))
+                var sslCertificateFile = SslCertificateFile?.Render(nullEvent) ?? string.Empty;
+                var sslCertificateThumbprint = SslCertificateThumbprint?.Render(nullEvent) ?? string.Empty;
+                System.Security.Cryptography.X509Certificates.X509Certificate2Collection? clientCertificates = null;
+                if (!string.IsNullOrEmpty(sslCertificateFile) || !string.IsNullOrEmpty(sslCertificateThumbprint))
                 {
-                    var sslCertificatePassword = SslCertificatePassword?.Render(nullEvent) ?? string.Empty;
                     try
                     {
-                        clientCertificates = _sslCertificateCache.LoadCertificate(sslCertificateFile, sslCertificatePassword);
+                        var sslCertificatePassword = SslCertificatePassword?.Render(nullEvent) ?? string.Empty;
+                        clientCertificates = _sslCertificateCache.LoadCertificate(sslCertificateFile, sslCertificatePassword, sslCertificateThumbprint);
                     }
                     catch (Exception ex)
                     {
-                        Common.InternalLogger.Error(ex, "{0}: Failed loading SSL certificate from file: {1}", this, sslCertificateFile);
-                        throw new NLogRuntimeException($"{GetType()}: Failed loading SSL certificate from file: {sslCertificateFile}", ex);
+                        if (string.IsNullOrEmpty(sslCertificateFile))
+                        {
+                            Common.InternalLogger.Error(ex, "{0}: Failed loading SSL certificate", this);
+                            throw new NLogRuntimeException($"{GetType()}: Failed loading SSL certificate", ex);
+                        }
+                        else
+                        {
+                            Common.InternalLogger.Error(ex, "{0}: Failed loading SSL certificate from file: {1}", this, sslCertificateFile);
+                            throw new NLogRuntimeException($"{GetType()}: Failed loading SSL certificate from file: {sslCertificateFile}", ex);
+                        }
                     }
                 }
 
