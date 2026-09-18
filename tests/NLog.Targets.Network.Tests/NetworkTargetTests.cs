@@ -1222,6 +1222,26 @@ namespace NLog.Targets.Network
         }
 
         [Fact]
+        public void InvalidSslCertificateThumbprint()
+        {
+            var senderFactory = new MyQueudSenderFactory();
+
+            var target = new NetworkTarget();
+            target.Address = "tcp://${logger}.company.lan/";
+            target.SenderFactory = senderFactory;
+            target.Layout = "${message}";
+            target.KeepConnection = true;
+            target.SslProtocols = SslProtocols.Tls12;
+            target.SslCertificateThumbprint = "0000000000000000000000000000000000000000";
+
+            using (var logFactory = new LogFactory().Setup().LoadConfiguration(cfg => cfg.ForLogger().WriteTo(target)).LogFactory)
+            {
+                var exception = Assert.Throws<NLogRuntimeException>(() => logFactory.GetCurrentClassLogger().Info("Fails because invalid SSL certificate thumbprint"));
+                Assert.Contains("SSL", exception.Message);
+            }
+        }
+
+        [Fact]
         public void EmptySslCertificateFilePath()
         {
             var senderFactory = new MyQueudSenderFactory();

@@ -89,7 +89,8 @@ LogManager.Setup().SetupExtensions(ext => {
 | _networkUserName_        |                     | Username for HTTP authentication. `_networkUserName = ""` means default NTLM credentials. |
 | _networkPassword_        |                     | Password for HTTP authentication.                                                 |
 | _sslCertificateFile_     |                     | Client certificate file used for mutual TLS authentication.                       |
-| _sslCertificatePassword_ |                     | Password for the client certificate.                                              |
+| _sslCertificatePassword_ |                     | Password for the client certificate file.                                         |
+| _sslCertificateThumbprint_ |                   | Thumbprint of a client certificate from X509Store (CurrentUser, then LocalMachine). Alternative to `sslCertificateFile`. |
 | _proxyUrl_               |                     | Proxy server URL.                                                                 |
 | _proxyUser_              |                     | Proxy authentication username.                                                    |
 | _proxyPassword_          |                     | Proxy authentication password.                                                    |
@@ -120,6 +121,15 @@ Mutual TLS authentication can be enabled using a client certificate:
         url="https://secure.example.com/logs"
         sslCertificateFile="client.pfx"
         sslCertificatePassword="secret" />
+```
+
+Alternatively load the client certificate from the Windows certificate store by thumbprint:
+
+```xml
+<target xsi:type="HttpClient"
+        name="http"
+        url="https://secure.example.com/logs"
+        sslCertificateThumbprint="A1B2C3D4E5F6..." />
 ```
 
 ## Retry Behavior
