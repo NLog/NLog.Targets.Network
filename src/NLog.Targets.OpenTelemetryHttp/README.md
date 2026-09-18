@@ -101,7 +101,8 @@ Supports the standard OpenTelemetry environment variables as fallback defaults:
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
 | _sendTimeoutSeconds_     | `30`                | HTTP request timeout in seconds.                                                  |
 | _sslCertificateFile_     |                     | Client certificate file used for mutual TLS authentication.                       |
-| _sslCertificatePassword_ |                     | Password for the client certificate.                                              |
+| _sslCertificatePassword_ |                     | Password for the client certificate file.                                         |
+| _sslCertificateThumbprint_ |                   | Thumbprint of a client certificate from X509Store (CurrentUser, then LocalMachine). Alternative to `sslCertificateFile`. |
 | _proxyUrl_               |                     | Proxy server URL.                                                                 |
 | _proxyUser_              |                     | Proxy authentication username.                                                    |
 | _proxyPassword_          |                     | Proxy authentication password.                                                    |
