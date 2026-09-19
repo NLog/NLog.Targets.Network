@@ -66,7 +66,7 @@ namespace NLog.Internal
 
             lock (_cacheLock)
             {
-                if (_cache?.TryGetValue(cacheKey, out clientCertificates) == true)
+                if (TryGetCachedCertificate(cacheKey, out clientCertificates))
                     return clientCertificates;
 
                 if (!string.IsNullOrEmpty(sslCertificateFile))
@@ -77,12 +77,13 @@ namespace NLog.Internal
                 }
                 else if (!string.IsNullOrEmpty(sslCertificateThumbprint))
                 {
-                    InternalLogger.Debug("Loading SSL certificate from certificate store. Thumbprint: {0}", sslCertificateThumbprint);
+                    sslCertificateThumbprint = NormalizeThumbprint(sslCertificateThumbprint);
+                    InternalLogger.Debug("Loading SSL certificate from certificate store with thumbprint: {0}", sslCertificateThumbprint);
                     clientCertificates = LoadCertificateFromStore(StoreLocation.CurrentUser, sslCertificateThumbprint);
                     if (clientCertificates.Count == 0)
                         clientCertificates = LoadCertificateFromStore(StoreLocation.LocalMachine, sslCertificateThumbprint);
                     if (clientCertificates.Count == 0)
-                        throw new NLogRuntimeException($"SSL certificate with thumbprint '{NormalizeThumbprint(sslCertificateThumbprint)}' not found in CurrentUser or LocalMachine My store");
+                        throw new NLogRuntimeException($"SSL certificate with thumbprint '{sslCertificateThumbprint}' not found in CurrentUser or LocalMachine My store");
                 }
                 else
                 {
@@ -107,7 +108,7 @@ namespace NLog.Internal
         {
             var cache = _cache;
             if (cache != null && cache.TryGetValue(cacheKey, out clientCertificates))
-                return true;  // Safe to lookup without lock, since immutable collection
+                return true;  // Safe to lookup without lock, since cache is immutable
 
             clientCertificates = null;
             return false;
@@ -119,7 +120,7 @@ namespace NLog.Internal
                 return sslCertificateFile;
 
             if (!string.IsNullOrEmpty(sslCertificateThumbprint))
-                return "store:" + NormalizeThumbprint(sslCertificateThumbprint);
+                return sslCertificateThumbprint;
 
             return string.Empty;
         }
@@ -146,7 +147,7 @@ namespace NLog.Internal
             }
         }
 
-        internal static X509Certificate2Collection LoadCertificateFromFile(string sslCertificateFile, string sslCertificatePassword)
+        private static X509Certificate2Collection LoadCertificateFromFile(string sslCertificateFile, string sslCertificatePassword)
         {
             if (sslCertificateFile.EndsWith(".pem", StringComparison.OrdinalIgnoreCase))
             {
@@ -158,12 +159,8 @@ namespace NLog.Internal
             }
         }
 
-        internal static X509Certificate2Collection LoadCertificateFromStore(StoreLocation storeLocation, string thumbprint)
+        private static X509Certificate2Collection LoadCertificateFromStore(StoreLocation storeLocation, string thumbprint)
         {
-            thumbprint = NormalizeThumbprint(thumbprint);
-            if (string.IsNullOrEmpty(thumbprint))
-                return new X509Certificate2Collection();
-
 #if !NET35
             using (var store = new X509Store(StoreName.My, storeLocation))
 #else
@@ -201,7 +198,7 @@ namespace NLog.Internal
                 var pem = reader.ReadToEnd();
                 var allCertificates = TryParseAllPemBlocks(pem, "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----", fileName);
                 if (allCertificates.Count == 0)
-                    throw new NLogRuntimeException("Invalid PEM format: Missing BEGIN CERTIFICATE header");
+                    throw new NLogRuntimeException($"Invalid PEM format: Missing BEGIN CERTIFICATE header in file: {fileName}");
 
                 var leafCertificate = new X509Certificate2(allCertificates[0]);
 
@@ -236,45 +233,42 @@ namespace NLog.Internal
         {
             var results = new List<byte[]>();
             int searchFrom = 0;
+
             while (true)
             {
                 int headerIndex = pem.IndexOf(header, searchFrom, StringComparison.Ordinal);
                 if (headerIndex < 0)
                     break;
 
-                int start = headerIndex + header.Length;
-                int end = pem.IndexOf(footer, start, StringComparison.Ordinal);
-                if (end < 0)
-                    throw new NLogRuntimeException($"Invalid PEM format: Missing {footer}");
+                int contentStart = headerIndex + header.Length;
+                int footerIndex = pem.IndexOf(footer, contentStart, StringComparison.Ordinal);
 
-                string base64 = StripPemWhiteSpace(pem, start, end - start);
-                if (string.IsNullOrEmpty(base64))
-                    throw new NLogRuntimeException($"Invalid PEM format: Missing content between {header} and {footer}");
+                if (footerIndex < 0)
+                    throw new NLogRuntimeException($"Invalid PEM format: Missing {footer} in file: {fileName}");
+
+                string base64 = pem.Substring(contentStart, footerIndex - contentStart);
+
+#if !NET35
+                if (string.IsNullOrWhiteSpace(base64))
+#else
+                if (string.IsNullOrEmpty(base64) || base64.Trim().Length == 0)
+#endif
+                    throw new NLogRuntimeException($"Invalid PEM format: Missing content between {header} and {footer} in file: {fileName}");
 
                 try
                 {
-                    results.Add(Convert.FromBase64String(base64));
+                    var bytes = Convert.FromBase64String(base64);   // Ignores whitespace by default
+                    results.Add(bytes);
                 }
                 catch (FormatException ex)
                 {
                     throw new NLogRuntimeException($"Invalid PEM format: Invalid Base64 content in file: {fileName}", ex);
                 }
-                searchFrom = end + footer.Length;
-            }
-            return results;
-        }
 
-        private static string StripPemWhiteSpace(string pem, int start, int length)
-        {
-            var builder = new StringBuilder(length);
-            int end = start + length;
-            for (int i = start; i < end; i++)
-            {
-                char ch = pem[i];
-                if (!char.IsWhiteSpace(ch))
-                    builder.Append(ch);
+                searchFrom = footerIndex + footer.Length;
             }
-            return builder.ToString();
+
+            return results;
         }
 
 #if NET || NETSTANDARD2_1_OR_GREATER
@@ -297,7 +291,7 @@ namespace NLog.Internal
 
             if (encryptedPkcs8Bytes != null && pkcs8Bytes == null && rsaPkcs1Bytes == null && ecPrivKeyBytes == null && string.IsNullOrEmpty(password))
             {
-                InternalLogger.Warn("SSL certificate PEM file contains an encrypted private key but no password was provided");
+                InternalLogger.Warn("SSL certificate PEM file contains an encrypted private key but no password was provided in file: {0}", fileName);
                 return null;
             }
 
@@ -332,6 +326,7 @@ namespace NLog.Internal
                 return certificate.CopyWithPrivateKey(ecdsa);
             }
 
+            InternalLogger.Warn("SSL certificate unable to attach private key. Unsupported key algorithm: {0} in file: {1}", keyAlgorithm, fileName);
             return null;
         }
 #endif
