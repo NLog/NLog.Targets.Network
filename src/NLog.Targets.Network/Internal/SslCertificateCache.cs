@@ -196,7 +196,7 @@ namespace NLog.Internal
             using (var reader = new System.IO.StreamReader(new System.IO.FileStream(fileName, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read), Encoding.UTF8))
             {
                 var pem = reader.ReadToEnd();
-                var allCertificates = TryParseAllPemBlocks(pem, "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----", fileName);
+                var allCertificates = TryParseAllPemBlocks(pem, "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----");
                 if (allCertificates.Count == 0)
                     throw new NLogRuntimeException($"Invalid PEM format: Missing BEGIN CERTIFICATE header in file: {fileName}");
 
@@ -229,7 +229,7 @@ namespace NLog.Internal
             }
         }
 
-        private static List<byte[]> TryParseAllPemBlocks(string pem, string header, string footer, string fileName)
+        private static List<byte[]> TryParseAllPemBlocks(string pem, string header, string footer)
         {
             var results = new List<byte[]>();
             int searchFrom = 0;
@@ -244,7 +244,7 @@ namespace NLog.Internal
                 int footerIndex = pem.IndexOf(footer, contentStart, StringComparison.Ordinal);
 
                 if (footerIndex < 0)
-                    throw new NLogRuntimeException($"Invalid PEM format: Missing {footer} in file: {fileName}");
+                    throw new NLogRuntimeException($"Invalid PEM format: Missing {footer}");
 
                 string base64 = pem.Substring(contentStart, footerIndex - contentStart);
 
@@ -253,7 +253,7 @@ namespace NLog.Internal
 #else
                 if (string.IsNullOrEmpty(base64) || base64.Trim().Length == 0)
 #endif
-                    throw new NLogRuntimeException($"Invalid PEM format: Missing content between {header} and {footer} in file: {fileName}");
+                    throw new NLogRuntimeException($"Invalid PEM format: Missing content between {header} and {footer}");
 
                 try
                 {
@@ -262,7 +262,7 @@ namespace NLog.Internal
                 }
                 catch (FormatException ex)
                 {
-                    throw new NLogRuntimeException($"Invalid PEM format: Invalid Base64 content in file: {fileName}", ex);
+                    throw new NLogRuntimeException($"Invalid PEM format: Invalid Base64 content", ex);
                 }
 
                 searchFrom = footerIndex + footer.Length;
@@ -272,19 +272,19 @@ namespace NLog.Internal
         }
 
 #if NET || NETSTANDARD2_1_OR_GREATER
-        private static byte[]? TryParsePemBlock(string pem, string header, string footer, string fileName)
+        private static byte[]? TryParsePemBlock(string pem, string header, string footer)
         {
-            var blocks = TryParseAllPemBlocks(pem, header, footer, fileName);
+            var blocks = TryParseAllPemBlocks(pem, header, footer);
             return blocks.Count > 0 ? blocks[0] : null;
         }
 
         private static X509Certificate2? TryAttachPrivateKeyFromPem(string pem, X509Certificate2 certificate, string? password, string fileName)
         {
-            byte[]? pkcs8Bytes = TryParsePemBlock(pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----", fileName);
-            byte[]? rsaPkcs1Bytes = pkcs8Bytes == null ? TryParsePemBlock(pem, "-----BEGIN RSA PRIVATE KEY-----", "-----END RSA PRIVATE KEY-----", fileName) : null;
-            byte[]? ecPrivKeyBytes = pkcs8Bytes == null ? TryParsePemBlock(pem, "-----BEGIN EC PRIVATE KEY-----", "-----END EC PRIVATE KEY-----", fileName) : null;
+            byte[]? pkcs8Bytes = TryParsePemBlock(pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----");
+            byte[]? rsaPkcs1Bytes = pkcs8Bytes == null ? TryParsePemBlock(pem, "-----BEGIN RSA PRIVATE KEY-----", "-----END RSA PRIVATE KEY-----") : null;
+            byte[]? ecPrivKeyBytes = pkcs8Bytes == null ? TryParsePemBlock(pem, "-----BEGIN EC PRIVATE KEY-----", "-----END EC PRIVATE KEY-----") : null;
             byte[]? encryptedPkcs8Bytes = (pkcs8Bytes == null && rsaPkcs1Bytes == null && ecPrivKeyBytes == null)
-                ? TryParsePemBlock(pem, "-----BEGIN ENCRYPTED PRIVATE KEY-----", "-----END ENCRYPTED PRIVATE KEY-----", fileName) : null;
+                ? TryParsePemBlock(pem, "-----BEGIN ENCRYPTED PRIVATE KEY-----", "-----END ENCRYPTED PRIVATE KEY-----") : null;
 
             if (pkcs8Bytes == null && rsaPkcs1Bytes == null && ecPrivKeyBytes == null && encryptedPkcs8Bytes == null)
                 return null;
