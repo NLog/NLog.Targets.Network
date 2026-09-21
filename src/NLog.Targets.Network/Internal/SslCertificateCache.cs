@@ -155,7 +155,13 @@ namespace NLog.Internal
             }
             else
             {
-                return new X509Certificate2Collection(new X509Certificate2(sslCertificateFile, string.IsNullOrEmpty(sslCertificatePassword) ? null : sslCertificatePassword));
+#if NETSTANDARD2_1_OR_GREATER || NET
+                // X509KeyStorageFlags.EphemeralKeySet for keeping imported PFX private keys in memory rather than persisting them to disk
+                var certificateFromFile = new X509Certificate2(sslCertificateFile, string.IsNullOrEmpty(sslCertificatePassword) ? null : sslCertificatePassword, X509KeyStorageFlags.EphemeralKeySet);
+#else
+                var certificateFromFile = new X509Certificate2(sslCertificateFile, string.IsNullOrEmpty(sslCertificatePassword) ? null : sslCertificatePassword);
+#endif
+                return new X509Certificate2Collection(certificateFromFile);
             }
         }
 
@@ -212,10 +218,15 @@ namespace NLog.Internal
                         leafCertificate = certWithKey;
                     }
                 }
-                catch
+                catch (NLogRuntimeException)
                 {
                     leafCertificate.Dispose();
                     throw;
+                }
+                catch (Exception ex)
+                {
+                    leafCertificate.Dispose();
+                    throw new NLogRuntimeException($"Private key does not match the certificate in file: {fileName}", ex);
                 }
 #endif
 
@@ -287,13 +298,13 @@ namespace NLog.Internal
                 ? TryParsePemBlock(pem, "-----BEGIN ENCRYPTED PRIVATE KEY-----", "-----END ENCRYPTED PRIVATE KEY-----") : null;
 
             if (pkcs8Bytes == null && rsaPkcs1Bytes == null && ecPrivKeyBytes == null && encryptedPkcs8Bytes == null)
-                return null;
-
-            if (encryptedPkcs8Bytes != null && pkcs8Bytes == null && rsaPkcs1Bytes == null && ecPrivKeyBytes == null && string.IsNullOrEmpty(password))
             {
-                InternalLogger.Warn("SSL certificate PEM file contains an encrypted private key but no password was provided in file: {0}", fileName);
+                InternalLogger.Debug("No private key found in SSL certificate PEM file: {0}", fileName);
                 return null;
             }
+
+            if (encryptedPkcs8Bytes != null && string.IsNullOrEmpty(password))
+               throw new NLogRuntimeException($"SSL certificate contains an encrypted private key, but missing password to load file: {fileName}");
 
             const string rsaOid = "1.2.840.113549.1.1.1";
             const string ecdsaOid = "1.2.840.10045.2.1";
@@ -326,7 +337,7 @@ namespace NLog.Internal
                 return certificate.CopyWithPrivateKey(ecdsa);
             }
 
-            InternalLogger.Warn("SSL certificate unable to attach private key. Unsupported key algorithm: {0} in file: {1}", keyAlgorithm, fileName);
+            InternalLogger.Info("SSL certificate unable to attach private key. Unsupported key algorithm: {0} in file: {1}", keyAlgorithm, fileName);
             return null;
         }
 #endif
