@@ -137,7 +137,7 @@ namespace NLog.Internal
             for (int i = 0; i < clientCertificates.Count; i++)
             {
                 var certificate = clientCertificates[i];
-                InternalLogger.Debug("Loaded SSL certificate: Subject={0}, Thumbprint={1}", certificate.Subject, certificate.Thumbprint);
+                InternalLogger.Debug("Loaded SSL certificate: Subject={0}, Thumbprint={1}, HasPrivateKey={2}", certificate.Subject, certificate.Thumbprint, certificate.HasPrivateKey);
 
                 var notAfterUtc = certificate.NotAfter.ToUniversalTime();
                 if (notAfterUtc <= utcNow)
