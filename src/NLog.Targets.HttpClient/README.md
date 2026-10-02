@@ -43,11 +43,11 @@ LogManager.Setup().SetupExtensions(ext => {
 </extensions>
 
 <targets>
-    <target xsi:type="HttpClient"
-            name="http"
-            url="https://api.example.com/logs">
-       <layout xsi:type="JsonLayout" includeEventProperties="true" />
-    </target>
+  <target xsi:type="HttpClient"
+    name="http"
+    url="https://api.example.com/logs">
+    <layout xsi:type="JsonLayout" includeEventProperties="true" />
+  </target>
 </targets>
 
 <rules>
@@ -153,20 +153,54 @@ The `Authorization` header is mandatory for Splunk HEC: `Authorization: Splunk <
 ```xml
 <nlog>
 <extensions>
-    <add assembly="NLog.Targets.HttpClient"/>
-    <add assembly="NLog.Targets.Network"/>
+  <add assembly="NLog.Targets.HttpClient"/>
+  <add assembly="NLog.Targets.Network"/>
 </extensions>
 <targets>
-    <target xsi:type="HttpClient"
-            name="splunk"
-            url="https://splunk-host:8088/services/collector/event"
-            batchSize="100">
-        <layout xsi:type="SplunkLayout" />
-        <header name="Authorization" layout="Splunk ${configsetting:Splunk.Token}" />
+  <target xsi:type="HttpClient"
+    name="splunk"
+    url="https://splunk-host:8088/services/collector/event"
+    batchSize="100">
+    <layout xsi:type="SplunkLayout" />
+     <header name="Authorization" layout="Splunk ${configsetting:Splunk.Token}" />
     </target>
 </targets>
 <rules>
     <logger name="*" minlevel="Info" writeTo="splunk" />
+</rules>
+</nlog>
+```
+
+## JSON to HTTP Endpoints
+
+`HttpClient` and `JsonLayout` can be used together to send structured log events to Fluentd, Fluent Bit, Logstash, Vector, and other HTTP-based log collectors that accept JSON or newline-delimited JSON (NDJSON).
+
+```xml
+<nlog>
+<extensions>
+  <add assembly="NLog.Targets.HttpClient"/>
+</extensions>
+<targets>
+  <target xsi:type="HttpClient"
+    name="httpCollector"
+    url="http://localhost:9880/myapp"
+    contentType="application/x-ndjson"
+    batchSize="100">
+    <layout xsi:type="JsonLayout" includeEventProperties="true">
+      <attribute name="timestamp" layout="${date:format=o:universalTime=true}" />
+      <attribute name="hostname" layout="${hostname}" />
+      <attribute name="process" layout="${processname}" />
+      <attribute name="level" layout="${level}" />
+      <attribute name="message" layout="${message}" />
+      <attribute name="logger" layout="${logger}" />
+      <attribute name="exception_type" layout="${exception:format=Type}" />
+      <attribute name="exception_msg" layout="${exception:format=Message}" />
+      <attribute name="exception" layout="${exception:format=ToString}" />
+    </layout>
+  </target>
+</targets>
+<rules>
+    <logger name="*" minlevel="Info" writeTo="httpCollector" />
 </rules>
 </nlog>
 ```
