@@ -3,11 +3,11 @@
 [![Version](https://badge.fury.io/nu/NLog.Targets.HttpClient.svg)](https://www.nuget.org/packages/NLog.Targets.HttpClient)
 [![AppVeyor](https://img.shields.io/appveyor/ci/NLog/NLog-Targets-Network/master.svg)](https://ci.appveyor.com/project/NLog/NLog-Targets-Network/branch/master)
 
-NLog `HttpClient` target for sending log events to an HTTP or HTTPS endpoint.
+NLog `HttpClient` target for sending log events to HTTP or HTTPS endpoints.
 
 * Supports HTTP POST, GET, and custom HTTP methods.
 * Batch multiple log events into a single HTTP request.
-* Supports batching as JSON arrays or Newline Delimited JSON (NDJSON).
+* Supports batching as JSON arrays or newline-delimited JSON (NDJSON).
 * GZip compression
 * Custom request headers
 * HTTP authentication
@@ -36,17 +36,28 @@ LogManager.Setup().SetupExtensions(ext => {
 
 ## Configuration Example
 
+`HttpClient` and [JsonLayout](https://github.com/NLog/NLog/wiki/JsonLayout) can be used together to send structured log events to HTTP endpoints that accept JSON or newline-delimited JSON (NDJSON), including log collectors such as Fluentd, Fluent Bit, Logstash, and Vector.
+
 ```xml
-<nlog>
+<nlog xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 <extensions>
-    <add assembly="NLog.Targets.HttpClient"/>
+  <add assembly="NLog.Targets.HttpClient"/>
 </extensions>
 
 <targets>
   <target xsi:type="HttpClient"
     name="http"
-    url="https://api.example.com/logs">
-    <layout xsi:type="JsonLayout" includeEventProperties="true" />
+    url="http://localhost:9880/logs_api"
+    contentType="application/x-ndjson"
+    batchSize="100">
+    <header name="User-Agent" layout="NLog-Http-${appdomain:friendly}" />
+    <layout xsi:type="JsonLayout" includeEventProperties="true">
+      <attribute name="timestamp" layout="${date:format=o:universalTime=true}" />
+      <attribute name="hostname" layout="${hostname}" />
+      <attribute name="process" layout="${processname}" />
+      <attribute name="level" layout="${level}" />
+      <attribute name="message" layout="${message:withException=true}" />
+    </layout>
   </target>
 </targets>
 
@@ -74,11 +85,11 @@ LogManager.Setup().SetupExtensions(ext => {
 | _batchAsJsonArray_       | `false`             | Wraps batched log events in a JSON array instead of separating them with `lineEnding`. |
 | _maxPayloadSizeBytes_    | `40960`             | Max payload size before splitting into multiple HTTP requests when using `BatchSize` |
 | _taskDelayMilliseconds_  | `1`                 | Delay before processing queued log events. Increasing value can improve batching. |
-| _taskTimeoutSeconds_     | `150`               | Maximum time in seconds before cancellation of HTTP request.                      |
+| _taskTimeoutSeconds_     | `150`               | Maximum lifetime in seconds for the entire task performing the HTTP request.      |
 | _retryCount_             | `0`                 | Number of retry attempts for failed write operations.                             |
 | _retryDelayMilliseconds_ | `2500`              | Initial delay before retry after failed request. Delay doubles for each retry.    |
 | _queueLimit_             | `10000`             | Maximum number of pending log events allowed in the internal queue.               |
-| _overflowAction_         | `Discard`           | Action taken when the internal queue reaches its limit.                           |
+| _overflowAction_         | `Discard`           | Action taken when the internal queue reaches its limit (Grow / Block / Discard).  |
 
 
 | Network and Security     | Default             | Description                                                                       |
@@ -86,7 +97,7 @@ LogManager.Setup().SetupExtensions(ext => {
 | _keepAlive_              | `true`              | Keeps HTTP connections open for reuse by subsequent requests for better performance. |
 | _expect100Continue_      | `false`             | Enables the HTTP 100-Continue handshake before sending the request body, but can increase latency. |
 | _sendTimeoutSeconds_     | `30`                | HTTP request timeout in seconds.                                                  |
-| _networkUserName_        |                     | Username for HTTP authentication. `_networkUserName = ""` means default NTLM credentials. |
+| _networkUserName_        |                     | Username for HTTP authentication. Explicit blank value (`networkUserName=""`) means default NTLM credentials. |
 | _networkPassword_        |                     | Password for HTTP authentication.                                                 |
 | _sslCertificateFile_     |                     | Client certificate file used for mutual TLS authentication.                       |
 | _sslCertificatePassword_ |                     | Password for the client certificate file.                                         |
@@ -94,42 +105,6 @@ LogManager.Setup().SetupExtensions(ext => {
 | _proxyUrl_               |                     | Proxy server URL.                                                                 |
 | _proxyUser_              |                     | Proxy authentication username.                                                    |
 | _proxyPassword_          |                     | Proxy authentication password.                                                    |
-
-## JSON to HTTP Endpoints
-
-`HttpClient` and `JsonLayout` can be used together to send structured log events to HTTP endpoints that accept JSON or newline-delimited JSON (NDJSON), including log collectors such as Fluentd, Fluent Bit, Logstash, and Vector.
-
-```xml
-<nlog>
-<extensions>
-  <add assembly="NLog.Targets.HttpClient"/>
-</extensions>
-<targets>
-  <target xsi:type="HttpClient"
-    name="httpCollector"
-    url="http://localhost:9880/myapp"
-    contentType="application/x-ndjson"
-    batchSize="100">
-    <header name="User-Agent" layout="NLog-Http-Exporter" />
-    <header name="X-Api-Key" layout="${gdc:item=ApiKey}" />
-    <layout xsi:type="JsonLayout" includeEventProperties="true">
-      <attribute name="timestamp" layout="${date:format=o:universalTime=true}" />
-      <attribute name="hostname" layout="${hostname}" />
-      <attribute name="process" layout="${processname}" />
-      <attribute name="level" layout="${level}" />
-      <attribute name="message" layout="${message}" />
-      <attribute name="logger" layout="${logger}" />
-      <attribute name="exception_type" layout="${exception:format=Type}" />
-      <attribute name="exception_msg" layout="${exception:format=Message}" />
-      <attribute name="exception" layout="${exception:format=ToString}" />
-    </layout>
-  </target>
-</targets>
-<rules>
-    <logger name="*" minlevel="Info" writeTo="httpCollector" />
-</rules>
-</nlog>
-```
 
 ## Splunk HTTP Event Collector (HEC)
 
@@ -140,7 +115,7 @@ LogManager.Setup().SetupExtensions(ext => {
 The `Authorization` header is mandatory for Splunk HEC: `Authorization: Splunk <hec-token>`
 
 ```xml
-<nlog>
+<nlog xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 <extensions>
   <add assembly="NLog.Targets.HttpClient"/>
   <add assembly="NLog.Targets.Network"/>
