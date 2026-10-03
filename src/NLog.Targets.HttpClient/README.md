@@ -69,10 +69,10 @@ LogManager.Setup().SetupExtensions(ext => {
 | Batching and Retry       | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
 | _batchSize_              | `1`                 | Maximum number of log events to send in a single HTTP payload. Increase on high-latency connections. |
-| _compress_               | `None`              | Optional compression of the HTTP request payload.. Supports `None`, `GZip`, and `GZipFast`. |
+| _compress_               | `None`              | Optional compression of the HTTP request payload. Supports `None`, `GZip`, and `GZipFast`. |
 | _lineEnding_             | `LF`                | Line separator used between log events when batching.                             |
 | _batchAsJsonArray_       | `false`             | Wraps batched log events in a JSON array instead of separating them with `lineEnding`. |
-| _maxPayloadSizeBytes_    | `40960`             | Max payload size before splitting into multiple HTTP requests. Remember `BatchSize` |
+| _maxPayloadSizeBytes_    | `40960`             | Max payload size before splitting into multiple HTTP requests when using `BatchSize` |
 | _taskDelayMilliseconds_  | `1`                 | Delay before processing queued log events. Increasing value can improve batching. |
 | _taskTimeoutSeconds_     | `150`               | Maximum time in seconds before cancellation of HTTP request.                      |
 | _retryCount_             | `0`                 | Number of retry attempts for failed write operations.                             |
@@ -95,20 +95,69 @@ LogManager.Setup().SetupExtensions(ext => {
 | _proxyUser_              |                     | Proxy authentication username.                                                    |
 | _proxyPassword_          |                     | Proxy authentication password.                                                    |
 
+## JSON to HTTP Endpoints
 
-## Custom Headers
-
-Additional HTTP headers can be configured:
+`HttpClient` and `JsonLayout` can be used together to send structured log events to HTTP endpoints that accept JSON or newline-delimited JSON (NDJSON), including log collectors such as Fluentd, Fluent Bit, Logstash, and Vector.
 
 ```xml
-<target xsi:type="HttpClient"
-        name="http"
-        url="https://api.example.com/logs">
-
+<nlog>
+<extensions>
+  <add assembly="NLog.Targets.HttpClient"/>
+</extensions>
+<targets>
+  <target xsi:type="HttpClient"
+    name="httpCollector"
+    url="http://localhost:9880/myapp"
+    contentType="application/x-ndjson"
+    batchSize="100">
+    <header name="User-Agent" layout="NLog-Http-Exporter" />
     <header name="X-Api-Key" layout="${gdc:item=ApiKey}" />
-    <header name="X-Environment" layout="Production" />
+    <layout xsi:type="JsonLayout" includeEventProperties="true">
+      <attribute name="timestamp" layout="${date:format=o:universalTime=true}" />
+      <attribute name="hostname" layout="${hostname}" />
+      <attribute name="process" layout="${processname}" />
+      <attribute name="level" layout="${level}" />
+      <attribute name="message" layout="${message}" />
+      <attribute name="logger" layout="${logger}" />
+      <attribute name="exception_type" layout="${exception:format=Type}" />
+      <attribute name="exception_msg" layout="${exception:format=Message}" />
+      <attribute name="exception" layout="${exception:format=ToString}" />
+    </layout>
+  </target>
+</targets>
+<rules>
+    <logger name="*" minlevel="Info" writeTo="httpCollector" />
+</rules>
+</nlog>
+```
 
-</target>
+## Splunk HTTP Event Collector (HEC)
+
+`SplunkLayout` from the [NLog.Targets.Network](https://www.nuget.org/packages/NLog.Targets.Network) package can be used together with the `HttpClient` target to send events to the Splunk HEC `/services/collector/event` endpoint using newline-delimited JSON (NDJSON).
+
+[SplunkLayout](https://github.com/NLog/NLog/wiki/SplunkLayout) renders the complete HEC event, including the outer `time`, `host`, `source`, `sourcetype`, `index`, and nested `event` fields.
+
+The `Authorization` header is mandatory for Splunk HEC: `Authorization: Splunk <hec-token>`
+
+```xml
+<nlog>
+<extensions>
+  <add assembly="NLog.Targets.HttpClient"/>
+  <add assembly="NLog.Targets.Network"/>
+</extensions>
+<targets>
+  <target xsi:type="HttpClient"
+    name="splunk"
+    url="https://splunk-host:8088/services/collector/event"
+    batchSize="100">
+    <header name="Authorization" layout="Splunk ${configsetting:Splunk.Token}" />
+    <layout xsi:type="SplunkLayout" />
+  </target>
+</targets>
+<rules>
+    <logger name="*" minlevel="Info" writeTo="splunk" />
+</rules>
+</nlog>
 ```
 
 ## Client Certificates (mTLS)
@@ -141,69 +190,6 @@ The target treats the following status codes as transient failures, that can be 
 * 5xx Server Errors
 
 Client-side failures such as `400 Bad Request` are not retried.
-
-## Splunk HTTP Event Collector (HEC)
-
-`SplunkLayout` from the [NLog.Targets.Network](https://www.nuget.org/packages/NLog.Targets.Network) package can be used together with the `HttpClient` target to send events to the Splunk HEC `/services/collector/event` endpoint using newline-delimited JSON (NDJSON).
-
-[SplunkLayout](https://github.com/NLog/NLog/wiki/SplunkLayout) renders the complete HEC event, including the outer `time`, `host`, `source`, `sourcetype`, `index`, and nested `event` fields.
-
-The `Authorization` header is mandatory for Splunk HEC: `Authorization: Splunk <hec-token>`
-
-```xml
-<nlog>
-<extensions>
-  <add assembly="NLog.Targets.HttpClient"/>
-  <add assembly="NLog.Targets.Network"/>
-</extensions>
-<targets>
-  <target xsi:type="HttpClient"
-    name="splunk"
-    url="https://splunk-host:8088/services/collector/event"
-    batchSize="100">
-    <layout xsi:type="SplunkLayout" />
-     <header name="Authorization" layout="Splunk ${configsetting:Splunk.Token}" />
-    </target>
-</targets>
-<rules>
-    <logger name="*" minlevel="Info" writeTo="splunk" />
-</rules>
-</nlog>
-```
-
-## JSON to HTTP Endpoints
-
-`HttpClient` and `JsonLayout` can be used together to send structured log events to Fluentd, Fluent Bit, Logstash, Vector, and other HTTP-based log collectors that accept JSON or newline-delimited JSON (NDJSON).
-
-```xml
-<nlog>
-<extensions>
-  <add assembly="NLog.Targets.HttpClient"/>
-</extensions>
-<targets>
-  <target xsi:type="HttpClient"
-    name="httpCollector"
-    url="http://localhost:9880/myapp"
-    contentType="application/x-ndjson"
-    batchSize="100">
-    <layout xsi:type="JsonLayout" includeEventProperties="true">
-      <attribute name="timestamp" layout="${date:format=o:universalTime=true}" />
-      <attribute name="hostname" layout="${hostname}" />
-      <attribute name="process" layout="${processname}" />
-      <attribute name="level" layout="${level}" />
-      <attribute name="message" layout="${message}" />
-      <attribute name="logger" layout="${logger}" />
-      <attribute name="exception_type" layout="${exception:format=Type}" />
-      <attribute name="exception_msg" layout="${exception:format=Message}" />
-      <attribute name="exception" layout="${exception:format=ToString}" />
-    </layout>
-  </target>
-</targets>
-<rules>
-    <logger name="*" minlevel="Info" writeTo="httpCollector" />
-</rules>
-</nlog>
-```
 
 ## Notes
 
