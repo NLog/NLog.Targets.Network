@@ -165,7 +165,7 @@ EcsLayout produces the log document, while [CompoundLayout](https://github.com/N
 </nlog>
 ```
 
-For production use, the URL can point to an index alias or other index-management mechanism rather than a fixed index. Authentication can be configured using the standard `HttpClient` target authentication and header options.
+For production use, consider targeting an OpenSearch index alias backed by your index lifecycle/rollover strategy rather than a permanently fixed index name. Authentication can be configured using the standard `HttpClient` target authentication and header options.
 
 Note: OpenSearch Bulk API can return HTTP 200 even when individual bulk operations fail. The HttpClient target retries HTTP-level failures; it does not inspect the Bulk API response for per-document failures.
 
