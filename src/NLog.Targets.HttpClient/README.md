@@ -151,7 +151,6 @@ EcsLayout produces the log document, while [CompoundLayout](https://github.com/N
   <target xsi:type="HttpClient"
     name="opensearch"
     url="https://localhost:9200/logs/_bulk"
-    method="POST"
     contentType="application/x-ndjson"
     batchSize="100">
     <layout xsi:type="CompoundLayout">
