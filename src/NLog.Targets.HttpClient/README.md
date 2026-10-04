@@ -135,6 +135,39 @@ The `Authorization` header is mandatory for Splunk HEC: `Authorization: Splunk <
 </nlog>
 ```
 
+## OpenSearch Bulk API
+
+`EscLayout` from the [Elastic.CommonSchema.NLog](https://www.nuget.org/packages/Elastic.CommonSchema.NLog) can be used together with the `HttpClient` target to send events to OpenSearch using the Bulk API.
+
+EcsLayout produces the log document, while [CompoundLayout](https://github.com/NLog/NLog/wiki/CompoundLayout) adds the Bulk API action metadata. The `&#xA;` is an explicit LF required to separate the action and document lines in the NDJSON payload for Bulk API.
+
+```xml
+<nlog xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<extensions>
+  <add assembly="NLog.Targets.HttpClient"/>
+  <add assembly="Elastic.CommonSchema.NLog"/>
+</extensions>
+<targets>
+  <target xsi:type="HttpClient"
+    name="opensearch"
+    url="https://localhost:9200/logs/_bulk"
+    method="POST"
+    contentType="application/x-ndjson"
+    batchSize="100">
+    <layout xsi:type="CompoundLayout">
+        <layout xsi:type="SimpleLayout" text="{&quot;index&quot;:{}}&#xA;" />
+        <layout xsi:type="EcsLayout" />
+    </layout>
+  </target>
+</targets>
+<rules>
+    <logger name="*" minlevel="Info" writeTo="opensearch" />
+</rules>
+</nlog>
+```
+
+For production use, the URL can point to an index alias or other index-management mechanism rather than a fixed index. Authentication can be configured using the standard `HttpClient` target authentication and header options.
+
 ## Client Certificates (mTLS)
 
 Mutual TLS authentication can be enabled using a client certificate:
