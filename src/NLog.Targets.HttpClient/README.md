@@ -190,7 +190,7 @@ Alternatively load the client certificate from the Windows certificate store by 
 
 ## Retry Behavior
 
-The target treats the following status codes as transient failures, that can be retried:
+The target treats the following HTTP response status codes as transient failures, that can be retried:
 
 * 408 Request Timeout
 * 429 Too Many Requests
