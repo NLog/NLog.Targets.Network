@@ -331,7 +331,7 @@ namespace NLog.Layouts
             target.Append(' ');
             target.Append(string.IsNullOrEmpty(msgId) ? NilValue : msgId);
 
-            var structuredDataId = EscapePropertyName(StructuredDataId?.Render(logEvent) ?? string.Empty);
+            var structuredDataId = EscapePropertyName(StructuredDataId?.Render(logEvent) ?? string.Empty, 32);
             if (string.IsNullOrEmpty(structuredDataId))
             {
                 target.Append(' ').Append(NilValue);    // SD-Element disabled
