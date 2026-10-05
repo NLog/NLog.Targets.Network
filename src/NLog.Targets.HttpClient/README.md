@@ -139,7 +139,7 @@ The `Authorization` header is mandatory for Splunk HEC: `Authorization: Splunk <
 
 `EcsLayout` from the [Elastic.CommonSchema.NLog](https://www.nuget.org/packages/Elastic.CommonSchema.NLog) can be used together with the `HttpClient` target to send ECS-formatted log events to OpenSearch using the Bulk API.
 
-`EcsLayout` produces the ECS-formatted JSON document, while [CompoundLayout](https://github.com/NLog/NLog/wiki/CompoundLayout) adds the Bulk API action metadata. The `&#xA;` is an explicit LF required to separate the action and document lines in the NDJSON payload for Bulk API. The URL `/logs/_bulk` supplies the default target index, so the Bulk API action does not need to provide an `_index` value.
+`EcsLayout` produces the ECS-formatted JSON document, while [CompoundLayout](https://github.com/NLog/NLog/wiki/CompoundLayout) adds the Bulk API action metadata. The `&#xA;` is an explicit LF required to separate the action and document lines in the NDJSON payload for Bulk API. The URL `/logs/_bulk` supplies the default target index, so the Bulk API action does not need to provide an `index` value.
 
 ```xml
 <nlog xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
