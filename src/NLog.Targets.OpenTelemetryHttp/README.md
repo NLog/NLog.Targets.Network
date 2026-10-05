@@ -46,12 +46,12 @@ Typical endpoint URL is `http://localhost:4318/v1/logs`.
 
 <targets>
     <target xsi:type="OpenTelemetry"
-            name="otlp"
+            name="otel"
             url="http://localhost:4318/v1/logs" />
 </targets>
 
 <rules>
-    <logger name="*" minlevel="Info" writeTo="otlp" />
+    <logger name="*" minlevel="Info" writeTo="otel" />
 </rules>
 </nlog>
 ```
@@ -113,7 +113,7 @@ Supports the standard OpenTelemetry environment variables as fallback defaults:
 Additional OpenTelemetry resource attributes can be configured using `resourceAttribute` entries:
 
 ```xml
-<target xsi:type="OpenTelemetry" name="otlp">
+<target xsi:type="OpenTelemetry" name="otel">
 
     <resourceAttribute name="service.namespace" layout="Backend" />
     <resourceAttribute name="deployment.environment" layout="Production" />
