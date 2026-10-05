@@ -169,7 +169,7 @@ For production use, consider targeting a write index alias managed by your rollo
 
 Notice OpenSearch Bulk API can return HTTP 200 even when individual bulk operations fail. The HttpClient target retries HTTP-level failures; it does not inspect the Bulk API response for per-document failures.
 
-Notice that export depends on in-memory queue, where LogEvents are lost on application-crash / -exit (without correct flush/shutdown). If higher guarantee of delivery is required, then consider using [Elastic.CommonSchema.NLog](https://www.nuget.org/packages/Elastic.CommonSchema.NLog) together with NLog FileTarget and use [filebeat](https://www.elastic.co/beats/filebeat) to ship these logs.
+Notice that export depends on in-memory queue, where LogEvents can be lost on application-crash / -exit (without correct flush/shutdown). If higher guarantee of delivery is required, then consider using [Elastic.CommonSchema.NLog](https://www.nuget.org/packages/Elastic.CommonSchema.NLog) together with NLog FileTarget and use [filebeat](https://www.elastic.co/beats/filebeat) to ship these logs.
 
 ## Client Certificates (mTLS)
 
