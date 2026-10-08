@@ -167,9 +167,9 @@ The `Authorization` header is mandatory for Splunk HEC: `Authorization: Splunk <
 
 For production use, consider targeting a write index alias managed by your rollover/index lifecycle strategy rather than a permanently fixed index name. Authentication can be configured using the standard `HttpClient` target authentication and header options.
 
-Notice OpenSearch Bulk API can return HTTP 200 even when individual bulk operations fail. The HttpClient target retries HTTP-level failures; it does not inspect the Bulk API response for per-document failures.
+Note OpenSearch Bulk API can return HTTP 200 even when individual bulk operations fail. The HttpClient target retries HTTP-level failures; it does not inspect the Bulk API response for per-document failures.
 
-Notice that export depends on in-memory queue, where LogEvents can be lost on application-crash / -exit (without correct flush/shutdown). If higher guarantee of delivery is required, then consider using [Elastic.CommonSchema.NLog](https://www.nuget.org/packages/Elastic.CommonSchema.NLog) together with NLog FileTarget, and use **Fluent Bit** (AWS FireLens) or **Data Prepper** to forward the logs to OpenSearch.
+Note that log export depends on in-memory queue, so LogEvents can be lost on application-crash / -exit (without correct flush/shutdown). If stronger delivery guarantee is required, then consider using [Elastic.CommonSchema.NLog](https://www.nuget.org/packages/Elastic.CommonSchema.NLog) together with NLog FileTarget, and use **Fluent Bit** (AWS FireLens) or **Data Prepper** to forward the logs to OpenSearch.
 
 ## Client Certificates (mTLS)
 
