@@ -176,7 +176,11 @@ namespace NLog.Layouts
         /// <summary>
         /// Gets the set of event properties to exclude from StructuredData when <see cref="Rfc5424"/> = <see langword="true"/>
         /// </summary>
-        public HashSet<string> ExcludeProperties { get; set; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+#if NET35
+        public HashSet<string> ExcludeProperties { get; set; }
+#else
+        public ISet<string> ExcludeProperties { get; set; }
+#endif
 
         /// <summary>
         /// List of StructuredData Parameters to include when <see cref="Rfc5424"/> = <see langword="true"/>
@@ -200,6 +204,7 @@ namespace NLog.Layouts
             _hostName = SyslogHostName = "${hostname}";
             _appName = SyslogAppName = "${processname}";
             _processId = SyslogProcessId = "${processid}";
+            ExcludeProperties = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
 
         /// <inheritdoc/>

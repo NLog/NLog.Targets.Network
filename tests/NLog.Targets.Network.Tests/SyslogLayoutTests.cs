@@ -226,7 +226,7 @@ namespace NLog.Targets.Network
             {
                 IncludeEventProperties = true,
                 ExcludeEmptyProperties = true,
-                ExcludeProperties = { "CorrelationKey" }
+                ExcludeProperties = { "correlationKey" }    // Case-insensitive matching
             };
 
             var memTarget = new NLog.Targets.MemoryTarget() { Layout = syslogLayout };

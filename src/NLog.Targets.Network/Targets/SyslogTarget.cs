@@ -93,7 +93,11 @@ namespace NLog.Targets
         public bool ExcludeEmptyProperties { get => _syslogLayout.ExcludeEmptyProperties; set => _syslogLayout.ExcludeEmptyProperties = value; }
 
         /// <inheritdoc cref="SyslogLayout.ExcludeProperties"/>
+#if NET35
         public HashSet<string> ExcludeProperties { get => _syslogLayout.ExcludeProperties; set => _syslogLayout.ExcludeProperties = value; }
+#else
+        public ISet<string> ExcludeProperties { get => _syslogLayout.ExcludeProperties; set => _syslogLayout.ExcludeProperties = value; }
+#endif
 
         /// <inheritdoc cref="SyslogLayout.StructuredDataParams"/>
         [ArrayParameter(typeof(TargetPropertyWithContext), "StructuredDataParam")]
