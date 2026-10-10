@@ -89,6 +89,12 @@ namespace NLog.Targets
         /// <inheritdoc cref="SyslogLayout.IncludeEventProperties"/>
         public bool IncludeEventProperties { get => _syslogLayout.IncludeEventProperties; set => _syslogLayout.IncludeEventProperties = value; }
 
+        /// <inheritdoc cref="SyslogLayout.ExcludeEmptyProperties"/>
+        public bool ExcludeEmptyProperties { get => _syslogLayout.ExcludeEmptyProperties; set => _syslogLayout.ExcludeEmptyProperties = value; }
+
+        /// <inheritdoc cref="SyslogLayout.ExcludeProperties"/>
+        public HashSet<string> ExcludeProperties { get => _syslogLayout.ExcludeProperties; set => _syslogLayout.ExcludeProperties = value; }
+
         /// <inheritdoc cref="SyslogLayout.StructuredDataParams"/>
         [ArrayParameter(typeof(TargetPropertyWithContext), "StructuredDataParam")]
         public List<TargetPropertyWithContext> StructuredDataParams => _syslogLayout.StructuredDataParams;

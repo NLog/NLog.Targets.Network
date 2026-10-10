@@ -211,7 +211,7 @@ namespace NLog.Internal
 #if NET || NETSTANDARD2_1_OR_GREATER
                 try
                 {
-                    var certWithKey = TryAttachPrivateKeyFromPem(pem, leafCertificate, password, fileName);
+                    var certWithKey = TryAttachPrivateKeyFromPem(pem, leafCertificate, fileName, password);
                     if (certWithKey != null)
                     {
                         leafCertificate.Dispose();
@@ -289,7 +289,7 @@ namespace NLog.Internal
             return blocks.Count > 0 ? blocks[0] : null;
         }
 
-        private static X509Certificate2? TryAttachPrivateKeyFromPem(string pem, X509Certificate2 certificate, string? password, string fileName)
+        private static X509Certificate2? TryAttachPrivateKeyFromPem(string pem, X509Certificate2 certificate, string fileName, string? password)
         {
             byte[]? pkcs8Bytes = TryParsePemBlock(pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----");
             byte[]? rsaPkcs1Bytes = pkcs8Bytes == null ? TryParsePemBlock(pem, "-----BEGIN RSA PRIVATE KEY-----", "-----END RSA PRIVATE KEY-----") : null;
