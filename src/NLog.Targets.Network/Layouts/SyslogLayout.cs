@@ -169,6 +169,16 @@ namespace NLog.Layouts
         public bool IncludeEventProperties { get; set; }
 
         /// <summary>
+        /// Gets or sets the option to exclude null/empty properties from StructuredData when <see cref="Rfc5424"/> = <see langword="true"/>
+        /// </summary>
+        public bool ExcludeEmptyProperties { get; set; }
+
+        /// <summary>
+        /// Gets the set of event properties to exclude from StructuredData when <see cref="Rfc5424"/> = <see langword="true"/>
+        /// </summary>
+        public HashSet<string> ExcludeProperties { get; set; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
         /// List of StructuredData Parameters to include when <see cref="Rfc5424"/> = <see langword="true"/>
         /// </summary>
         [ArrayParameter(typeof(TargetPropertyWithContext), "StructuredDataParam")]
@@ -340,14 +350,24 @@ namespace NLog.Layouts
             {
                 if (IncludeEventProperties && logEvent.HasProperties)
                 {
+                    bool excludeEventProperties = ExcludeProperties?.Count > 0;
+
                     foreach (var eventProperty in logEvent.Properties)
                     {
-                        var propertyName = EscapePropertyName(eventProperty.Key?.ToString() ?? string.Empty, 32);
+                        var propertyName = eventProperty.Key?.ToString() ?? string.Empty;
+                        if (excludeEventProperties && ExcludeProperties?.Contains(propertyName) == true)
+                            continue;
+
+                        var propertyValue = eventProperty.Value;
+                        if (ExcludeEmptyProperties && (propertyValue is null || string.Empty.Equals(propertyValue)))
+                            continue;
+
+                        propertyName = EscapePropertyName(propertyName, 32);
                         if (string.IsNullOrEmpty(propertyName))
                             continue;
 
                         structuredDataId = AppendPropertyName(target, structuredDataId, propertyName);
-                        AppendPropertyValue(target, eventProperty.Value);
+                        AppendPropertyValue(target, propertyValue);
                     }
                 }
 

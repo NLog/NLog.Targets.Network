@@ -333,7 +333,7 @@ namespace NLog.Layouts
                 for (int i = 0; i < scopePropertyList.Count; ++i)
                 {
                     var scopeProperty = scopePropertyList[i];
-                    if (ExcludeEmptyProperties && (scopeProperty.Value is null || ReferenceEquals(scopeProperty.Value, string.Empty)))
+                    if (ExcludeEmptyProperties && (scopeProperty.Value is null || string.Empty.Equals(scopeProperty.Value)))
                         continue;
 
                     if (filterScopeProperties && ExcludeScopeProperty(scopeProperty.Key, eventProperties, ExcludeProperties))
@@ -348,7 +348,7 @@ namespace NLog.Layouts
                 var excludeProperties = ExcludeProperties?.Count > 0 ? ExcludeProperties : null;
                 foreach (var eventProperty in eventProperties)
                 {
-                    if (ExcludeEmptyProperties && (eventProperty.Value is null || ReferenceEquals(eventProperty.Value, string.Empty)))
+                    if (ExcludeEmptyProperties && (eventProperty.Value is null || string.Empty.Equals(eventProperty.Value)))
                         continue;
 
                     var eventPropertyName = eventProperty.Key?.ToString() ?? string.Empty;

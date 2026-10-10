@@ -219,6 +219,28 @@ namespace NLog.Targets.Network
             }
         }
 
+        [Fact]
+        public void SyslogLayout_Rfc5424_ExcludeProperties()
+        {
+            var syslogLayout = new SyslogLayout
+            {
+                IncludeEventProperties = true,
+                ExcludeEmptyProperties = true,
+                ExcludeProperties = { "CorrelationKey" }
+            };
+
+            var memTarget = new NLog.Targets.MemoryTarget() { Layout = syslogLayout };
+            using (var logFactory = new LogFactory().Setup().LoadConfiguration(cfg => cfg.ForLogger().WriteTo(memTarget)).LogFactory)
+            {
+                var logger = logFactory.GetCurrentClassLogger();
+                var logEvent = LogEventInfo.Create(LogLevel.Info, null, null, "Hello {World} {CorrelationKey} {EmptyProp} {NullProp}", new object[] { "Earth", "123", "", null });
+                logger.Log(logEvent);
+
+                Assert.Single(memTarget.Logs);
+                Assert.Equal($"<14>1 {logEvent.TimeStamp:o} {HostName} {ProcessName} {ProcessId} - [meta World=\"Earth\"] {logEvent.FormattedMessage}", memTarget.Logs[0]);
+            }
+        }
+
         static string ResolveHostname()
         {
             return Environment.GetEnvironmentVariable("HOSTNAME")
