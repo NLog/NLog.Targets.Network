@@ -83,10 +83,6 @@ Changelog:
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.400" PrivateAssets="All" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\NLog.Targets.HttpClient\NLog.Targets.HttpClient.csproj" />
   </ItemGroup>
 
