@@ -678,6 +678,10 @@ namespace NLog.Targets
                         }
                     }
                 }
+                else
+                {
+                    Common.InternalLogger.Debug("{0}: Skipped loading SSL certificate, because empty value was resolved", this);
+                }
             }
 
             var sender = SenderFactory.Create(address, clientCertificates, this);
