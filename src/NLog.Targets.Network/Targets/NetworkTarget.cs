@@ -237,7 +237,7 @@ namespace NLog.Targets
         /// <docgen category='Connection Options' order='16' />
         public Layout? SslCertificatePassword { get; set; }
 
-        /// <summary>throw new NLogRuntimeException($"{GetType()}: Failed loading SSL certificate", ex);
+        /// <summary>
         /// Gets or sets the thumbprint of a client SSL certificate from <see cref="System.Security.Cryptography.X509Certificates.X509Store"/>
         /// Searches CurrentUser first, then LocalMachine. Used when <see cref="SslCertificateFile"/> is not specified.
         /// </summary>
