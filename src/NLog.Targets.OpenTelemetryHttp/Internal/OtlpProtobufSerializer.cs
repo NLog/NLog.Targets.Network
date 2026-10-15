@@ -45,8 +45,8 @@ namespace NLog.Internal
     /// </summary>
     /// <remarks>
     /// Implements manual protobuf encoding without any external proto library dependency.
-    /// The output is a complete <c>ExportLogsServiceRequest</c> message as defined in the
-    /// OpenTelemetry Log Data Model proto schema.
+    /// Writes directly to a <c>MemoryStream</c> in the protobuf wire format with dynamic padding in length-prefix for faster writing.
+    /// The output is a complete <c>ExportLogsServiceRequest</c> message as defined in the OpenTelemetry Log Data Model proto schema.
     /// <a href="https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/logs/v1/logs.proto">See OTLP logs.proto</a>
     /// </remarks>
     internal sealed class OtlpProtobufSerializer
@@ -103,40 +103,40 @@ namespace NLog.Internal
         internal void BuildLogRecord<T>(MemoryStream stream, LogEventInfo logEvent, string logMessage, IEnumerable<KeyValuePair<T, object?>>? logProperties)
         {
             // LogRecord proto field numbers:
-            //   fixed64 time_unix_nano = 1
-            //   SeverityNumber severity_number = 2
-            //   string severity_text = 3
-            //   AnyValue body = 5
-            //   repeated KeyValue attributes = 6
-            //   bytes trace_id = 9
-            //   bytes span_id = 10
-            //   string event_name = 12
+            const int LogRecordTimeUnixNanoField = 1;   // fixed64
+            const int LogRecordSeverityNumberField = 2; // Varint (enum SeverityNumber)
+            const int LogRecordSeverityTextField = 3;   // string
+            const int LogRecordBodyField = 5;           // AnyValue
+            const int LogRecordAttributesField = 6;     // repeated KeyValue
+            const int LogRecordTraceIdField = 9;        // bytes
+            const int LogRecordSpanIdField = 10;        // bytes
+            const int LogRecordEventNameField = 12;     // string
+
             var unixNano = ToUnixNano(logEvent.TimeStamp);
-            WriteFixed64Field(stream, 1, unixNano);
+            WriteFixed64Field(stream, LogRecordTimeUnixNanoField, unixNano);
 
             var severityNumber = MapSeverityNumber(logEvent.Level);
             if (severityNumber != 0)
             {
-                WriteVarintField(stream, 2, (ulong)severityNumber);
-                WriteStringField(stream, 3, logEvent.Level.ToString());
+                WriteVarintField(stream, LogRecordSeverityNumberField, (ulong)severityNumber);
+                WriteStringField(stream, LogRecordSeverityTextField, logEvent.Level.ToString());
             }
 
             if (!string.IsNullOrEmpty(logMessage))
             {
-                BuildAnyValueString(stream, 5, logMessage);
+                BuildAnyValueString(stream, LogRecordBodyField, logMessage);
             }
 
             if (!string.IsNullOrEmpty(logEvent.LoggerName))
             {
-                WriteKeyStringValue(stream, 6, "logger.name", logEvent.LoggerName);
+                WriteKeyStringValue(stream, LogRecordAttributesField, "logger.name", logEvent.LoggerName);
             }
-
 
             if (logEvent.Exception != null)
             {
-                WriteKeyStringValue(stream, 6, "exception.type", logEvent.Exception.GetType().ToString());
-                WriteKeyStringValue(stream, 6, "exception.message", logEvent.Exception.Message);
-                WriteKeyStringValue(stream, 6, "exception.stacktrace", logEvent.Exception.ToString());
+                WriteKeyStringValue(stream, LogRecordAttributesField, "exception.type", logEvent.Exception.GetType().ToString());
+                WriteKeyStringValue(stream, LogRecordAttributesField, "exception.message", logEvent.Exception.Message);
+                WriteKeyStringValue(stream, LogRecordAttributesField, "exception.stacktrace", logEvent.Exception.ToString());
             }
 
             string eventNameKey = string.Empty;
@@ -147,11 +147,11 @@ namespace NLog.Internal
 
                 if (logEvent.HasProperties)
                 {
-                    WriteKeyStringValue(stream, 6, "log.record.original", logEvent.Message);    // Message Template with placeholders
+                    WriteKeyStringValue(stream, LogRecordAttributesField, "log.record.original", logEvent.Message);    // Message Template with placeholders
                     if (logEvent.Properties.TryGetValue("EventId", out var eventIdObj) && eventIdObj != null)
                     {
                         eventId = "EventId";
-                        WriteKeyValue(stream, 6, "event.id", eventIdObj);
+                        WriteKeyValue(stream, LogRecordAttributesField, "event.id", eventIdObj);
                     }
                     if (logEvent.Properties.TryGetValue("EventName", out var eventNameObj) && eventNameObj is string eventNameString)
                     {
@@ -175,7 +175,7 @@ namespace NLog.Internal
                         if (!ReferenceEquals(eventNameKey, string.Empty) && key == eventNameKey)
                             continue;
 
-                        WriteKeyValue(stream, 6, key, prop.Value);
+                        WriteKeyValue(stream, LogRecordAttributesField, key, prop.Value);
                     }
                 }
                 finally
@@ -188,17 +188,17 @@ namespace NLog.Internal
             var traceId = TraceId?.RenderValue(logEvent);
             if (traceId.HasValue)
             {
-                WriteTraceIdField(stream, 9, traceId.Value);
+                WriteTraceIdField(stream, LogRecordTraceIdField, traceId.Value);
             }
             var spanId = SpanId?.RenderValue(logEvent);
             if (spanId.HasValue)
             {
-                WriteSpanIdField(stream, 10, spanId.Value);
+                WriteSpanIdField(stream, LogRecordSpanIdField, spanId.Value);
             }
 
             if (!string.IsNullOrEmpty(eventNameValue))
             {
-                WriteStringField(stream, 12, eventNameValue);
+                WriteStringField(stream, LogRecordEventNameField, eventNameValue);
             }
         }
 
@@ -628,33 +628,16 @@ namespace NLog.Internal
             if (maxByteCount >= SubmessageWriter.MaxContentLength)
                 throw new InvalidOperationException($"String field {fieldNumber} is too large ({maxByteCount} bytes exceeds the {SubmessageWriter.MaxContentLength}-byte protobuf limit).");
 
-            // 1-byte length for short strings (≤127 bytes), 2-byte padded varint for medium, 4-byte for large.
-            // actualByteCount <= maxByteCount so the selected size always fits.
-            var varintSize = maxByteCount > SubmessageWriter.MaxContent2ByteThreshold ? 4 : (maxByteCount > 127 ? 2 : 1);
+            var paddedLengthSize = ResolvePaddedContentLength(maxByteCount);
             WriteTag(stream, fieldNumber, WireType.LengthDelimited);
             var varintPos = (int)stream.Position;
-            var contentStart = varintPos + varintSize;
+            var contentStart = varintPos + paddedLengthSize;
             stream.SetLength(contentStart + maxByteCount);
             var buf = stream.GetBuffer();
-            var length = Encoding.UTF8.GetBytes(value, 0, value.Length, buf, contentStart);
-            if (varintSize == 1)
-            {
-                buf[varintPos] = (byte)length;
-            }
-            else if (varintSize == 2)
-            {
-                buf[varintPos] = (byte)((length & 0x7F) | 0x80);
-                buf[varintPos + 1] = (byte)(length >> 7);
-            }
-            else
-            {
-                buf[varintPos] = (byte)((length & 0x7F) | 0x80);
-                buf[varintPos + 1] = (byte)(((length >> 7) & 0x7F) | 0x80);
-                buf[varintPos + 2] = (byte)(((length >> 14) & 0x7F) | 0x80);
-                buf[varintPos + 3] = (byte)(length >> 21);
-            }
-            stream.SetLength(contentStart + length);
-            stream.Position = contentStart + length;
+            var contentLength = Encoding.UTF8.GetBytes(value, 0, value.Length, buf, contentStart);
+            WritePrefixContentLength(contentLength, paddedLengthSize, buf, varintPos);
+            stream.SetLength(contentStart + contentLength);
+            stream.Position = contentStart + contentLength;
 #endif
         }
 
@@ -670,33 +653,16 @@ namespace NLog.Internal
             if (maxByteCount >= SubmessageWriter.MaxContentLength)
                 throw new InvalidOperationException($"String field {fieldNumber} is too large ({maxByteCount} bytes exceeds the {SubmessageWriter.MaxContentLength}-byte protobuf limit).");
 
-            // 1-byte length for short strings (≤127 bytes), 2-byte padded varint for medium, 4-byte for large.
-            // actualByteCount <= maxByteCount so the selected size always fits.
-            var varintSize = maxByteCount > SubmessageWriter.MaxContent2ByteThreshold ? 4 : (maxByteCount > 127 ? 2 : 1);
+            var paddedLengthSize = ResolvePaddedContentLength(maxByteCount);
             WriteTag(stream, fieldNumber, WireType.LengthDelimited);
             var varintPos = (int)stream.Position;
-            var contentStart = varintPos + varintSize;
+            var contentStart = varintPos + paddedLengthSize;
             stream.SetLength(contentStart + maxByteCount);
             var buf = stream.GetBuffer();
-            var length = Encoding.UTF8.GetBytes(value, buf.AsSpan(contentStart));
-            if (varintSize == 1)
-            {
-                buf[varintPos] = (byte)length;
-            }
-            else if (varintSize == 2)
-            {
-                buf[varintPos] = (byte)((length & 0x7F) | 0x80);
-                buf[varintPos + 1] = (byte)(length >> 7);
-            }
-            else
-            {
-                buf[varintPos] = (byte)((length & 0x7F) | 0x80);
-                buf[varintPos + 1] = (byte)(((length >> 7) & 0x7F) | 0x80);
-                buf[varintPos + 2] = (byte)(((length >> 14) & 0x7F) | 0x80);
-                buf[varintPos + 3] = (byte)(length >> 21);
-            }
-            stream.SetLength(contentStart + length);
-            stream.Position = contentStart + length;
+            var contentLength = Encoding.UTF8.GetBytes(value, buf.AsSpan(contentStart));
+            WritePrefixContentLength(contentLength, paddedLengthSize, buf, varintPos);
+            stream.SetLength(contentStart + contentLength);
+            stream.Position = contentStart + contentLength;
         }
 #endif
 
@@ -726,7 +692,7 @@ namespace NLog.Internal
                 _tagSize = _tagValue < 0x80 ? 1 : 2; // field 1-15 = 1 byte tag; field 16+ = 2 bytes
                 _stream = stream;
                 _headerPos = (int)stream.Position;
-                _paddedLengthSize = maxByteCount <= 127 ? 1 : (maxByteCount <= MaxContent2ByteThreshold ? 2 : 4);
+                _paddedLengthSize = ResolvePaddedContentLength(maxByteCount);
                 stream.Position = _headerPos + _tagSize + _paddedLengthSize;
             }
 
@@ -756,33 +722,7 @@ namespace NLog.Internal
                 WriteTagToBuffer(header, _tagValue, _headerPos);
                 int offset = _headerPos + _tagSize;
 #endif
-                if (_paddedLengthSize == 1)
-                {
-                    if (contentLength > 127)
-                        throw new InvalidOperationException($"Protobuf content length {contentLength} exceeds the 1-byte varint limit of 127 bytes.");
-
-                    header[offset] = (byte)contentLength;
-                }
-                else if (_paddedLengthSize == 2)
-                {
-                    if (contentLength > MaxContent2ByteLength)
-                        throw new InvalidOperationException($"Protobuf content length {contentLength} exceeds the 2-byte padded varint limit of {MaxContent2ByteLength} bytes.");
-
-                    // Encode as exactly 2 varint bytes (padded) — valid per the protobuf spec
-                    header[offset] = (byte)((contentLength & 0x7F) | 0x80);
-                    header[offset + 1] = (byte)(contentLength >> 7);
-                }
-                else
-                {
-                    if (contentLength >= MaxContentLength)
-                        throw new InvalidOperationException($"Protobuf content length {contentLength} exceeds the 4-byte padded varint limit of {MaxContentLength} bytes.");
-
-                    // Encode as exactly 4 varint bytes (padded) — valid per the protobuf spec
-                    header[offset] = (byte)((contentLength & 0x7F) | 0x80);
-                    header[offset + 1] = (byte)(((contentLength >> 7) & 0x7F) | 0x80);
-                    header[offset + 2] = (byte)(((contentLength >> 14) & 0x7F) | 0x80);
-                    header[offset + 3] = (byte)(contentLength >> 21);
-                }
+                WritePrefixContentLength(contentLength, _paddedLengthSize, header, offset);
             }
 
 #if NET || NETSTANDARD2_1_OR_GREATER
@@ -830,6 +770,50 @@ namespace NLog.Internal
             spanId.CopyTo(stream.GetBuffer().AsSpan(pos, 8));
 
             stream.Position = pos + 8;
+        }
+
+        private static int ResolvePaddedContentLength(int maxByteCount)
+        {
+            if (maxByteCount > SubmessageWriter.MaxContent2ByteThreshold)
+                return 4;
+            if (maxByteCount > 127)
+                return 2;
+            return 1;
+        }
+
+#if NET || NETSTANDARD2_1_OR_GREATER
+        private static void WritePrefixContentLength(int contentLength, int paddedLengthSize, Span<byte> header, int offset)
+#else
+        private static void WritePrefixContentLength(int contentLength, int paddedLengthSize, byte[] header, int offset)
+#endif
+        {
+            if (paddedLengthSize == 1)
+            {
+                if (contentLength > 127)
+                    throw new InvalidOperationException($"Protobuf content length {contentLength} exceeds the 1-byte varint limit of 127 bytes.");
+
+                header[offset] = (byte)contentLength;
+            }
+            else if (paddedLengthSize == 2)
+            {
+                if (contentLength > SubmessageWriter.MaxContent2ByteLength)
+                    throw new InvalidOperationException($"Protobuf content length {contentLength} exceeds the 2-byte padded varint limit of {SubmessageWriter.MaxContent2ByteLength} bytes.");
+
+                // Encode as exactly 2 varint bytes (padded) — valid per the protobuf spec
+                header[offset] = (byte)((contentLength & 0x7F) | 0x80);
+                header[offset + 1] = (byte)(contentLength >> 7);
+            }
+            else
+            {
+                if (contentLength >= SubmessageWriter.MaxContentLength)
+                    throw new InvalidOperationException($"Protobuf content length {contentLength} exceeds the 4-byte padded varint limit of {SubmessageWriter.MaxContentLength} bytes.");
+
+                // Encode as exactly 4 varint bytes (padded) — valid per the protobuf spec
+                header[offset] = (byte)((contentLength & 0x7F) | 0x80);
+                header[offset + 1] = (byte)(((contentLength >> 7) & 0x7F) | 0x80);
+                header[offset + 2] = (byte)(((contentLength >> 14) & 0x7F) | 0x80);
+                header[offset + 3] = (byte)(contentLength >> 21);
+            }
         }
 
         internal static ulong ToUnixNano(DateTime timestamp)

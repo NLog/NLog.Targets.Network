@@ -83,7 +83,7 @@ LogManager.Setup().SetupExtensions(ext => {
 | _compress_               | `None`              | Optional compression of the HTTP request payload. Supports `None`, `GZip`, and `GZipFast`. |
 | _lineEnding_             | `LF`                | Line separator used between log events when batching.                             |
 | _batchAsJsonArray_       | `false`             | Wraps batched log events in a JSON array instead of separating them with `lineEnding`. |
-| _maxPayloadSizeBytes_    | `40960`             | Max payload size before splitting into multiple HTTP requests when using `BatchSize` |
+| _maxPayloadSizeBytes_    | `40960`             | Max payload size in bytes before splitting into multiple HTTP requests when using `BatchSize` |
 | _taskDelayMilliseconds_  | `1`                 | Delay before processing queued log events. Increasing value can improve batching. |
 | _taskTimeoutSeconds_     | `150`               | Maximum lifetime in seconds for the entire task performing the HTTP request.      |
 | _retryCount_             | `0`                 | Number of retry attempts for failed write operations.                             |
