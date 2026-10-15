@@ -131,7 +131,6 @@ namespace NLog.Internal
                 WriteKeyStringValue(stream, 6, "logger.name", logEvent.LoggerName);
             }
 
-
             if (logEvent.Exception != null)
             {
                 WriteKeyStringValue(stream, 6, "exception.type", logEvent.Exception.GetType().ToString());

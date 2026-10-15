@@ -34,10 +34,11 @@ LogManager.Setup().SetupExtensions(ext => {
 });
 ```
 
-## Configuration Example
+## Configuration Examples
 
-Typical endpoint URL is `http://localhost:4318/v1/logs`.
+Typical OTLP/HTTP endpoint URL is `http://localhost:4318/v1/logs`. The target also supports configuration from OpenTelemetry environment variables as fallback.
 
+### NLog.config
 ```xml
 <nlog xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 <extensions>
@@ -56,17 +57,40 @@ Typical endpoint URL is `http://localhost:4318/v1/logs`.
 </nlog>
 ```
 
-Supports the standard OpenTelemetry environment variables as fallback defaults:
-- `OTEL_EXPORTER_OTLP_ENDPOINT`
-- `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`
-- `OTEL_EXPORTER_OTLP_HEADERS`
-- `OTEL_EXPORTER_OTLP_LOGS_HEADERS`
-- `OTEL_EXPORTER_OTLP_COMPRESSION`
-- `OTEL_EXPORTER_OTLP_LOGS_COMPRESSION`
-- `OTEL_EXPORTER_OTLP_TIMEOUT`
-- `OTEL_EXPORTER_OTLP_LOGS_TIMEOUT`
-- `OTEL_SERVICE_NAME`
-- `OTEL_RESOURCE_ATTRIBUTES`
+### AppSettings.json
+When using [NLog.Extensions.Logging](https://www.nuget.org/packages/NLog.Extensions.Logging) the target can be configured from [appsettings.json](https://github.com/NLog/NLog.Extensions.Logging/wiki/NLog-configuration-with-appsettings.json):
+
+```json
+{
+  "NLog": {
+    "extensions": [
+      { "assembly": "NLog.Targets.OpenTelemetryHttp" }
+    ],
+    "targets": {
+      "otel": {
+        "type": "OpenTelemetry",
+        "url": "http://localhost:4318/v1/logs"
+      }
+    },
+    "rules": [
+      { "logger": "*", "minLevel": "Info", "writeTo": "otel" }
+    ]
+  }
+}
+```
+
+### Fluent Configuration API
+```csharp
+NLog.LogManager.Setup().LoadConfiguration(builder =>
+{
+    builder.ForLogger()
+        .FilterMinLevel(NLog.LogLevel.Info)
+        .WriteTo(new NLog.Targets.OpenTelemetryHttpTarget
+        {
+            Url = "http://localhost:4318/v1/logs"
+        });
+});
+```
 
 ## Parameters
 
@@ -88,7 +112,7 @@ Supports the standard OpenTelemetry environment variables as fallback defaults:
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
 | _batchSize_              | `200`               | Maximum number of log events to send in a single HTTP payload.                    |
 | _compress_               | `None`              | Optional compression of the OTLP/HTTP request payload. Supports None, GZip, and GZipFast. |
-| _maxPayloadSizeBytes_    | `40960`             | Max payload size before splitting into multiple HTTP requests. Remember `BatchSize` |
+| _maxPayloadSizeBytes_    | `40960`             | Max payload size in bytes before splitting into multiple HTTP requests. Remember `BatchSize` |
 | _taskDelayMilliseconds_  | `50`                | Delay before processing queued log events. Increasing value can improve batching. |
 | _taskTimeoutSeconds_     | `150`               | Maximum lifetime in seconds for the entire task performing the HTTP request.      |
 | _retryCount_             | `3`                 | Number of retry attempts for failed write operations.                             |
@@ -120,6 +144,18 @@ Additional OpenTelemetry resource attributes can be configured using `resourceAt
 
 </target>
 ```
+
+## Structured Log Properties
+
+NLog event properties are exported as structured OpenTelemetry log attributes using the OTLP AnyValue format:
+- _Primitive values_ : strings, Booleans, integers, and floating-point numbers.
+- _Enum values_ : serialized as strings.
+- _DateTime values_ : DateTime and DateTimeOffset serialized using `ToString("o")` for round-trip ISO 8601 format.
+- _Dictionary values_ : `IDictionary` and `IEnumerable<KeyValuePair<string, object>>` represented as OpenTelemetry KeyValueList values.
+- _Arrays and collections_ : serialized as OpenTelemetry ArrayValue (Max 10.000 items)
+- _Nested collections_ : supported max recursion level of two.
+
+Unknown or unrecognized object types fall back to string formatting. Values beyond the supported nesting depth will be formatted as strings.
 
 ## OpenTelemetry Environment Variables
 
