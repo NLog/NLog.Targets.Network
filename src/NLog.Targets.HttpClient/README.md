@@ -54,7 +54,7 @@ LogManager.Setup().SetupExtensions(ext => {
     <layout xsi:type="JsonLayout" includeEventProperties="true">
       <attribute name="timestamp" layout="${date:format=o:universalTime=true}" />
       <attribute name="hostname" layout="${hostname}" />
-      <attribute name="process" layout="${processname}" />
+      <attribute name="application" layout="${processname}" />
       <attribute name="level" layout="${level}" />
       <attribute name="message" layout="${message:withException=true}" />
     </layout>
