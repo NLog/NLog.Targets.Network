@@ -11,25 +11,25 @@ See the [NLog Wiki - Network Target](https://github.com/NLog/NLog/wiki/Network-t
 
 ## NLog Syslog Target
 
-NLog Syslog Target combines the NLog NetworkTarget with NLog SyslogLayout Rfc5424 / Rfc3164.
+NLog SyslogTarget combines the NLog NetworkTarget with NLog SyslogLayout Rfc5424 / Rfc3164.
 
 See the [NLog Wiki - Syslog Target](https://github.com/NLog/NLog/wiki/Syslog-target) for available options and examples.
 
 ## NLog Splunk Target
 
-NLog Splunk Target combines the NLog NetworkTarget with NLog SplunkLayout.
+NLog SplunkTarget combines the NLog NetworkTarget with NLog SplunkLayout.
 
 See the [NLog Wiki - Splunk Target](https://github.com/NLog/NLog/wiki/Splunk-target) for available options and examples.
 
 ## NLog GELF Target
 
-NLog Gelf Target combines the NLog NetworkTarget with NLog GelfLayout for Graylog Extended Logging Format (GELF).
+NLog GelfTarget combines the NLog NetworkTarget with NLog GelfLayout for Graylog Extended Logging Format (GELF).
 
 See the [NLog Wiki - Gelf Target](https://github.com/NLog/NLog/wiki/Gelf-target) for available options and examples.
 
 ## NLog Log4JXml Target
 
-NLog Log4JXml Target combines the NLog NetworkTarget with NLog Log4JXmlEventLayout for NLogViewer / Chainsaw / Java Log4J.
+NLog Log4JXmlTarget combines the NLog NetworkTarget with NLog Log4JXmlEventLayout for NLogViewer / Chainsaw / Java Log4J.
 
 See the [NLog Wiki - Log4JXml Target](https://github.com/NLog/NLog/wiki/Log4JXml-target) for available options and examples.
 
