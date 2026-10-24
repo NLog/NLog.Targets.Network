@@ -20,14 +20,15 @@ jobs:
   build:
     name: ${{ matrix.name }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
             name: Build & test (Windows)
             framework_args:
-          # - os: ubuntu-latest
-          #   name: Build & test (Ubuntu)
-          #   framework_args:
+          - os: ubuntu-latest
+            name: Build & test (Ubuntu)
+            framework_args:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
