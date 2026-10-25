@@ -548,6 +548,7 @@ namespace NLog.Targets.HttpClient.Tests
                     var logger = logFactory.GetLogger("TestLogger");
 
                     logger.Info("fails");
+                    logFactory.Flush();
 
                     var failedRequests = server.WaitForRequests(1);
                     Assert.Single(failedRequests);
