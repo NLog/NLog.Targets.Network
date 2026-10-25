@@ -49,16 +49,13 @@ namespace NLog.Targets.Network
         public Log4JXmlTests()
         {
             LogManager.ThrowExceptions = true;
-            LogManager.Setup().SetupExtensions(ext =>
-            {
-                ext.RegisterLayout<Log4JXmlEventLayout>();
-            });
         }
 
         [Fact]
         public void Log4JXmlTest()
         {
             var logFactory = new LogFactory().Setup()
+                .SetupExtensions(ext => ext.RegisterLayout<Log4JXmlEventLayout>())
                 .LoadConfigurationFromXml(@"
              <nlog throwExceptions='true'>
                   <targets async='true'>
