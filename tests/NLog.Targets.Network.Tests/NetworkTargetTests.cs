@@ -1270,7 +1270,7 @@ namespace NLog.Targets.Network
             var logFactory = new LogFactory().Setup().SetupExtensions(ext => ext.RegisterTarget<NetworkTarget>())
                 .LoadConfigurationFromXml($@"
             <nlog>
-                <targets async='true'><target name='target1' type='network' layout='${{level}}|${{threadid}}|${{message}}' Address='tcp://127.0.0.1:50001' keepAliveTimeSeconds='{keepAliveTimeSeconds}' /></targets>
+                <targets async='true'><target name='target1' type='network' layout='${{level}}|${{threadid}}|${{message}}' Address='tcp://127.0.0.1:0' keepAliveTimeSeconds='{keepAliveTimeSeconds}' /></targets>
                 <rules><logger name='*' minLevel='Trace' writeTo='target1'/></rules>
             </nlog>").LogFactory;
 
@@ -1289,7 +1289,7 @@ namespace NLog.Targets.Network
             var logFactory = new LogFactory().Setup().SetupExtensions(ext => ext.RegisterTarget<NetworkTarget>())
                 .LoadConfigurationFromXml($@"
             <nlog>
-                <targets async='true'><target name='target1' type='network' layout='${{level}}|${{threadid}}|${{message}}' Address='tcp://127.0.0.1:50001' sendTimeoutSeconds='{sendTimeoutSeconds}' /></targets>
+                <targets async='true'><target name='target1' type='network' layout='${{level}}|${{threadid}}|${{message}}' Address='tcp://127.0.0.1:0' sendTimeoutSeconds='{sendTimeoutSeconds}' /></targets>
                 <rules><logger name='*' minLevel='Trace' writeTo='target1'/></rules>
             </nlog>").LogFactory;
 
@@ -1308,7 +1308,7 @@ namespace NLog.Targets.Network
             var logFactory = new LogFactory().Setup().SetupExtensions(ext => ext.RegisterTarget<NetworkTarget>())
                 .LoadConfigurationFromXml($@"
             <nlog>
-                <targets async='true'><target name='target1' type='network' layout='${{level}}|${{threadid}}|${{message}}' Address='tcp://127.0.0.1:50001' noDelay='{noDelay}' /></targets>
+                <targets async='true'><target name='target1' type='network' layout='${{level}}|${{threadid}}|${{message}}' Address='tcp://127.0.0.1:0' noDelay='{noDelay}' /></targets>
                 <rules><logger name='*' minLevel='Trace' writeTo='target1'/></rules>
             </nlog>").LogFactory;
 
