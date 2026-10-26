@@ -55,7 +55,7 @@ namespace NLog.Targets.Network
         public void Log4JXmlTest()
         {
             var logFactory = new LogFactory().Setup()
-                .SetupExtensions(ext => ext.RegisterLayout<Log4JXmlEventLayout>())
+                .SetupExtensions(ext => ext.RegisterLayout<Log4JXmlEventLayout>("Log4JXmlEventLayout"))
                 .LoadConfigurationFromXml(@"
              <nlog throwExceptions='true'>
                   <targets async='true'>
