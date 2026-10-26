@@ -44,6 +44,12 @@ namespace NLog.Targets.Network
     using NLog.Targets;
     using Xunit;
 
+    [CollectionDefinition(nameof(Log4JXmlTestsCollection), DisableParallelization = true)]
+    public sealed class Log4JXmlTestsCollection
+    {
+    }
+
+    [Collection(nameof(Log4JXmlTestsCollection))]
     public class Log4JXmlTests
     {
         public Log4JXmlTests()
