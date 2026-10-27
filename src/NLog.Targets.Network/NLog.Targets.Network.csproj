@@ -1,48 +1,17 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Package version and release notes are managed in ../Directory.Build.props. -->
 
   <PropertyGroup>
-    <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">18.0</VisualStudioVersion>
     <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' AND '$(VisualStudioVersion)' &lt; '17.0' ">net35;net46;net471;netstandard2.0</TargetFrameworks>
     <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' ">net35;net46;net471;netstandard2.0;netstandard2.1</TargetFrameworks>
 
-    <VersionPrefix>6.1.6</VersionPrefix>
-    <AssemblyVersion>6.0.0.0</AssemblyVersion>
-    <!-- Strong AssemblyVersion must be fixed on 6.0.0.0 -->
-		<FileVersion>$(VersionPrefix).0</FileVersion>
-
     <Title>NLog.Targets.Network</Title>
-    <Company>NLog</Company>
     <Description>NetworkTarget for sending messages using TCP / UDP sockets with support for SSL / TSL (Log4JXml / GELF / Syslog / Splunk)</Description>
     <Product>NLog.Targets.Network v$(VersionPrefix)</Product>
-    <Authors>Jarek Kowalski,Kim Christensen,Julian Verdurmen</Authors>
-    <CurrentYear>$([System.DateTime]::Now.ToString(yyyy))</CurrentYear>
-    <Copyright>Copyright (c) 2004-$(CurrentYear) NLog Project - https://nlog-project.org/ </Copyright>
-
-    <PackageReleaseNotes>
-Changelog:
-
-- NetworkTarget support SslCertificateThumbprint for loading client certificate from store (#49)
-- SyslogTarget / SyslogLayout support ExcludeProperties for Rfc5424 (#60)
-- SyslogTarget / SyslogLayout support ExcludeEmptyProperties for Rfc5424 (#60)
-- Remove Microsoft.SourceLink.GitHub as part of NET8 SDK (#62)
-    </PackageReleaseNotes>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>NLog;TCPIP;TCP;UDP;Network;logging;log;Syslog;GELF;Graylog;Splunk;Log4JXml</PackageTags>
-    <PackageIcon>N.png</PackageIcon>
     <PackageProjectUrl>https://github.com/NLog/NLog.Targets.Network</PackageProjectUrl>
-    <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
-    <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/NLog/NLog.Targets.Network.git</RepositoryUrl>
 
-    <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>NLog.snk</AssemblyOriginatorKeyFile>
-    <PublicSign Condition=" '$(OS)' != 'Windows_NT' ">true</PublicSign>
-
-    <IsPackable>true</IsPackable>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <Nullable>enable</Nullable>
-    <LangVersion>9</LangVersion>
     <EnableTrimAnalyzer Condition=" '$(TargetFramework)' == 'netstandard2.1' ">true</EnableTrimAnalyzer>
     <IsTrimmable Condition=" '$(TargetFramework)' == 'netstandard2.1' ">true</IsTrimmable>
     <IsAotCompatible Condition=" '$(TargetFramework)' == 'netstandard2.1' ">true</IsAotCompatible>
@@ -76,20 +45,8 @@ Changelog:
     <Reference Include="System.Net.Http" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="NLog" Version="6.1.4" />
-  </ItemGroup>
-
   <PropertyGroup>
     <AssemblyTitle>$(Title)</AssemblyTitle>
   </PropertyGroup>
-
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="" />
-    <None Include="N.png" Pack="true" PackagePath="" visible="false" />
-  </ItemGroup>
-  <Target Name="DownloadMissingContent" BeforeTargets="GenerateNuspec">
-    <DownloadFile SourceUrl="https://nlog-project.org/N.png" DestinationFolder="$(MSBuildThisFileDirectory)" />
-  </Target>
 
 </Project>

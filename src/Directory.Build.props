@@ -1,0 +1,51 @@
+<Project>
+    <PropertyGroup>
+        <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">18.0</VisualStudioVersion>
+
+        <!-- Update the package version here; add release notes only for unreleased changes. -->
+        <VersionPrefix>6.2.2</VersionPrefix>
+        <PackageReleaseNotes>Update NLog dependency to 6.2.2.</PackageReleaseNotes>
+
+        <AssemblyVersion>6.0.0.0</AssemblyVersion>
+        <!-- AssemblyVersion must be fixed on 6.0.0.0 -->
+        <FileVersion>$(VersionPrefix).0</FileVersion>
+
+        <Company>NLog</Company>
+        <Authors>Jarek Kowalski,Kim Christensen,Julian Verdurmen</Authors>
+        <CurrentYear>$([System.DateTime]::Now.ToString(yyyy))</CurrentYear>
+        <Copyright>Copyright (c) 2004-$(CurrentYear) NLog Project - https://nlog-project.org/ </Copyright>
+
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>N.png</PackageIcon>
+
+        <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
+        <RepositoryType>git</RepositoryType>
+        <RepositoryUrl>https://github.com/NLog/NLog.Targets.Network.git</RepositoryUrl>
+
+        <SignAssembly>true</SignAssembly>
+        <PublicSign Condition=" '$(OS)' != 'Windows_NT' ">true</PublicSign>
+
+        <IsPackable>true</IsPackable>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <Nullable>enable</Nullable>
+        <LangVersion>9</LangVersion>
+        <NuGetAudit>true</NuGetAudit>
+        <NuGetAuditMode>all</NuGetAuditMode>
+        <NuGetAuditLevel>low</NuGetAuditLevel>
+        <WarningsAsErrors>$(WarningsAsErrors);NU1900;NU1901;NU1902;NU1903;NU1904</WarningsAsErrors>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="NLog" Version="6.2.2" />
+    </ItemGroup>
+    
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="" />
+        <None Include="N.png" Pack="true" PackagePath="" visible="false" />
+    </ItemGroup>
+
+    <Target Name="DownloadMissingContent" BeforeTargets="GenerateNuspec">
+        <DownloadFile SourceUrl="https://nlog-project.org/N.png" DestinationFolder="$(MSBuildProjectDirectory)" />
+    </Target>
+</Project>
