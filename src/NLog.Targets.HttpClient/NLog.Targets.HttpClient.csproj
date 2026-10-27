@@ -8,15 +8,12 @@
     <VersionPrefix>6.1.5</VersionPrefix>
     <AssemblyVersion>6.0.0.0</AssemblyVersion>
     <!-- Strong AssemblyVersion must be fixed on 6.0.0.0 -->
-    <AppVeyorBuildNumber>$(APPVEYOR_BUILD_NUMBER)</AppVeyorBuildNumber>
-    <AppVeyorBuildNumber Condition="'$(AppVeyorBuildNumber)' == ''">0</AppVeyorBuildNumber>
-    <FileVersion>$(VersionPrefix).$(AppVeyorBuildNumber)</FileVersion>
+		<FileVersion>$(VersionPrefix).0</FileVersion>
 
     <Title>NLog.Targets.HttpClient</Title>
     <Company>NLog</Company>
     <Description>NLog HttpClientTarget for sending log messages to HTTP or HTTPS endpoint, with support for batching and compression.</Description>
-    <Product>NLog.Targets.HttpClient v$(ProductVersion)</Product>
-    <InformationalVersion>$(ProductVersion)</InformationalVersion>
+    <Product>NLog.Targets.HttpClient v$(VersionPrefix)</Product>
     <Authors>Jarek Kowalski,Kim Christensen,Julian Verdurmen</Authors>
     <CurrentYear>$([System.DateTime]::Now.ToString(yyyy))</CurrentYear>
     <Copyright>Copyright (c) 2004-$(CurrentYear) NLog Project - https://nlog-project.org/ </Copyright>
