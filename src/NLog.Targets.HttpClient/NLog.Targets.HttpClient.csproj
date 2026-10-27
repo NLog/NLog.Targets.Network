@@ -1,45 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- Package version and release notes are managed in ../Directory.Build.props. -->
 
   <PropertyGroup>
-    <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">18.0</VisualStudioVersion>
     <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' AND '$(VisualStudioVersion)' &lt; '17.0' ">net471;netstandard2.0</TargetFrameworks>
     <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' ">net471;netstandard2.0;netstandard2.1</TargetFrameworks>
 
-    <VersionPrefix>6.1.5</VersionPrefix>
-    <AssemblyVersion>6.0.0.0</AssemblyVersion>
-    <!-- Strong AssemblyVersion must be fixed on 6.0.0.0 -->
-		<FileVersion>$(VersionPrefix).0</FileVersion>
-
     <Title>NLog.Targets.HttpClient</Title>
-    <Company>NLog</Company>
     <Description>NLog HttpClientTarget for sending log messages to HTTP or HTTPS endpoint, with support for batching and compression.</Description>
     <Product>NLog.Targets.HttpClient v$(VersionPrefix)</Product>
-    <Authors>Jarek Kowalski,Kim Christensen,Julian Verdurmen</Authors>
-    <CurrentYear>$([System.DateTime]::Now.ToString(yyyy))</CurrentYear>
-    <Copyright>Copyright (c) 2004-$(CurrentYear) NLog Project - https://nlog-project.org/ </Copyright>
-
-    <PackageReleaseNotes>
-Changelog:
-
-- Support SslCertificateThumbprint for loading client certificate from store (#49)
-    </PackageReleaseNotes>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>NLog;HTTP;HTTPS;HttpClient;logging;log</PackageTags>
-    <PackageIcon>N.png</PackageIcon>
     <PackageProjectUrl>https://github.com/NLog/NLog.Targets.Network/tree/master/src/NLog.Targets.HttpClient</PackageProjectUrl>
-    <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
-    <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/NLog/NLog.Targets.Network.git</RepositoryUrl>
 
-    <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>NLog.snk</AssemblyOriginatorKeyFile>
-    <PublicSign Condition=" '$(OS)' != 'Windows_NT' ">true</PublicSign>
-
-    <IsPackable>true</IsPackable>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <Nullable>enable</Nullable>
-    <LangVersion>9</LangVersion>
     <EnableTrimAnalyzer Condition=" '$(TargetFramework)' == 'netstandard2.1' ">true</EnableTrimAnalyzer>
     <IsTrimmable Condition=" '$(TargetFramework)' == 'netstandard2.1' ">true</IsTrimmable>
     <IsAotCompatible Condition=" '$(TargetFramework)' == 'netstandard2.1' ">true</IsAotCompatible>
@@ -68,20 +40,8 @@ Changelog:
     <Compile Include="..\NLog.Targets.Network\Internal\SslCertificateCache.cs" Link="Internal\SslCertificateCache.cs" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="NLog" Version="6.1.4" />
-  </ItemGroup>
-
   <PropertyGroup>
     <AssemblyTitle>$(Title)</AssemblyTitle>
   </PropertyGroup>
-
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="" />
-    <None Include="N.png" Pack="true" PackagePath="" visible="false" />
-  </ItemGroup>
-  <Target Name="DownloadMissingContent" BeforeTargets="GenerateNuspec">
-    <DownloadFile SourceUrl="https://nlog-project.org/N.png" DestinationFolder="$(MSBuildThisFileDirectory)" />
-  </Target>
 
 </Project>
