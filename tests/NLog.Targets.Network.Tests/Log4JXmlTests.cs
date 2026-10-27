@@ -44,21 +44,24 @@ namespace NLog.Targets.Network
     using NLog.Targets;
     using Xunit;
 
+    [CollectionDefinition(nameof(Log4JXmlTestsCollection), DisableParallelization = true)]
+    public sealed class Log4JXmlTestsCollection
+    {
+    }
+
+    [Collection(nameof(Log4JXmlTestsCollection))]
     public class Log4JXmlTests
     {
         public Log4JXmlTests()
         {
             LogManager.ThrowExceptions = true;
-            LogManager.Setup().SetupExtensions(ext =>
-            {
-                ext.RegisterLayout<Log4JXmlEventLayout>();
-            });
         }
 
         [Fact]
         public void Log4JXmlTest()
         {
             var logFactory = new LogFactory().Setup()
+                .SetupExtensions(ext => ext.RegisterLayout<Log4JXmlEventLayout>("Log4JXmlEventLayout"))
                 .LoadConfigurationFromXml(@"
              <nlog throwExceptions='true'>
                   <targets async='true'>

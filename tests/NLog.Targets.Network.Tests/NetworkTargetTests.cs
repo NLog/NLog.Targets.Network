@@ -562,14 +562,13 @@ namespace NLog.Targets.Network
         {
             var loopBackIP = Socket.OSSupportsIPv4 ? IPAddress.Loopback : IPAddress.IPv6Loopback;
             var tcpPrefix = loopBackIP.AddressFamily == AddressFamily.InterNetwork ? "tcp4" : "tcp6";
-            var tcpPort = getNewNetworkPort();
 
             string expectedResult = string.Empty;
 
-            using (var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp))
+            using (var listener = new Socket(loopBackIP.AddressFamily, SocketType.Stream, ProtocolType.Tcp))
             using (var target = new NetworkTarget()
             {
-                Address = $"{tcpPrefix}://{loopBackIP}:{tcpPort}",
+                Address = $"{tcpPrefix}://{loopBackIP}:{bindToAvailablePort(listener, loopBackIP)}",
                 Layout = "${message}\n",
                 KeepConnection = true,
             })
@@ -578,7 +577,6 @@ namespace NLog.Targets.Network
                 var resultStream = new MemoryStream();
                 var receiveFinished = new ManualResetEvent(false);
 
-                listener.Bind(new IPEndPoint(loopBackIP, tcpPort));
                 listener.Listen(10);
                 listener.BeginAccept(
                     result =>
@@ -688,24 +686,23 @@ namespace NLog.Targets.Network
             }
         }
 
-        private static int getNewNetworkPort()
+        private static int bindToAvailablePort(Socket listener, IPAddress loopBackIP)
         {
-            return 9500 + System.Threading.Interlocked.Increment(ref _portOffset);
+            listener.Bind(new IPEndPoint(loopBackIP, 0));
+            return ((IPEndPoint)listener.LocalEndPoint).Port;
         }
-        private static int _portOffset;
 
         private static void NetworkTargetUdpTest(bool splitMessage)
         {
             var loopBackIP = Socket.OSSupportsIPv4 ? IPAddress.Loopback : IPAddress.IPv6Loopback;
             var udpPrefix = loopBackIP.AddressFamily == AddressFamily.InterNetwork ? "udp4" : "udp6";
-            var udpPort = getNewNetworkPort();
 
             string expectedResult = string.Empty;
 
-            using (var listener = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))
+            using (var listener = new Socket(loopBackIP.AddressFamily, SocketType.Dgram, ProtocolType.Udp))
             using (var target = new NetworkTarget()
             {
-                Address = $"{udpPrefix}://{loopBackIP}:{udpPort}",
+                Address = $"{udpPrefix}://{loopBackIP}:{bindToAvailablePort(listener, loopBackIP)}",
                 Layout = "${message}\n",
                 KeepConnection = true,
                 MaxMessageSize = splitMessage ? 4 : short.MaxValue,
@@ -717,7 +714,6 @@ namespace NLog.Targets.Network
 
                 byte[] receiveBuffer = new byte[4096];
 
-                listener.Bind(new IPEndPoint(loopBackIP, udpPort));
                 EndPoint remoteEndPoint = null;
                 AsyncCallback receivedDatagram = null;
 
@@ -754,7 +750,7 @@ namespace NLog.Targets.Network
                                 }
                             }
 
-                            remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
+                            remoteEndPoint = new IPEndPoint(loopBackIP, 0);
                             listener.BeginReceiveFrom(receiveBuffer, 0, receiveBuffer.Length, SocketFlags.None, ref remoteEndPoint, receivedDatagram, null);
                         }
                         catch (Exception ex)
@@ -764,7 +760,7 @@ namespace NLog.Targets.Network
                         }
                     };
 
-                remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
+                remoteEndPoint = new IPEndPoint(loopBackIP, 0);
                 listener.BeginReceiveFrom(receiveBuffer, 0, receiveBuffer.Length, SocketFlags.None, ref remoteEndPoint, receivedDatagram, null);
 
                 var logFactory = new LogFactory().Setup().LoadConfiguration(cfg => cfg.ForLogger().WriteTo(target)).LogFactory;
@@ -1270,7 +1266,7 @@ namespace NLog.Targets.Network
             var logFactory = new LogFactory().Setup().SetupExtensions(ext => ext.RegisterTarget<NetworkTarget>())
                 .LoadConfigurationFromXml($@"
             <nlog>
-                <targets async='true'><target name='target1' type='network' layout='${{level}}|${{threadid}}|${{message}}' Address='tcp://127.0.0.1:50001' keepAliveTimeSeconds='{keepAliveTimeSeconds}' /></targets>
+                <targets async='true'><target name='target1' type='network' layout='${{level}}|${{threadid}}|${{message}}' Address='tcp://127.0.0.1:0' keepAliveTimeSeconds='{keepAliveTimeSeconds}' /></targets>
                 <rules><logger name='*' minLevel='Trace' writeTo='target1'/></rules>
             </nlog>").LogFactory;
 
@@ -1289,7 +1285,7 @@ namespace NLog.Targets.Network
             var logFactory = new LogFactory().Setup().SetupExtensions(ext => ext.RegisterTarget<NetworkTarget>())
                 .LoadConfigurationFromXml($@"
             <nlog>
-                <targets async='true'><target name='target1' type='network' layout='${{level}}|${{threadid}}|${{message}}' Address='tcp://127.0.0.1:50001' sendTimeoutSeconds='{sendTimeoutSeconds}' /></targets>
+                <targets async='true'><target name='target1' type='network' layout='${{level}}|${{threadid}}|${{message}}' Address='tcp://127.0.0.1:0' sendTimeoutSeconds='{sendTimeoutSeconds}' /></targets>
                 <rules><logger name='*' minLevel='Trace' writeTo='target1'/></rules>
             </nlog>").LogFactory;
 
@@ -1308,7 +1304,7 @@ namespace NLog.Targets.Network
             var logFactory = new LogFactory().Setup().SetupExtensions(ext => ext.RegisterTarget<NetworkTarget>())
                 .LoadConfigurationFromXml($@"
             <nlog>
-                <targets async='true'><target name='target1' type='network' layout='${{level}}|${{threadid}}|${{message}}' Address='tcp://127.0.0.1:50001' noDelay='{noDelay}' /></targets>
+                <targets async='true'><target name='target1' type='network' layout='${{level}}|${{threadid}}|${{message}}' Address='tcp://127.0.0.1:0' noDelay='{noDelay}' /></targets>
                 <rules><logger name='*' minLevel='Trace' writeTo='target1'/></rules>
             </nlog>").LogFactory;
 
