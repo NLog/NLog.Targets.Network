@@ -8,18 +8,15 @@ NLog `OpenTelemetry` target for exporting log events to an OpenTelemetry Collect
 
 Designed for applications that already use NLog and want to export log events directly using the OTLP protobuf format, without depending on the OpenTelemetry SDK logging pipeline.
 
-Automatically captures TraceId and SpanId for distributed-tracing correlation and exports NLog Event Properties as structured OpenTelemetry log attributes.
+The target automatically captures TraceId and SpanId for distributed tracing correlation and exports NLog event properties as structured OpenTelemetry log attributes.
 
-If having trouble with output, then check [NLog InternalLogger](https://github.com/NLog/NLog/wiki/Internal-Logging) for clues. See also [Troubleshooting NLog](https://github.com/NLog/NLog/wiki/Logging-Troubleshooting).
+If you have trouble with output, check [NLog InternalLogger](https://github.com/NLog/NLog/wiki/Internal-Logging) for clues. See also [Troubleshooting NLog](https://github.com/NLog/NLog/wiki/Logging-Troubleshooting).
 
-See also:
-
-* https://opentelemetry.io/docs/specs/otlp/#otlphttp
-* https://opentelemetry.io/docs/specs/otel/protocol/exporter/
+See also the OpenTelemetry specifications for [OTLP/HTTP](https://opentelemetry.io/docs/specs/otlp/#otlphttp) and [exporters](https://opentelemetry.io/docs/specs/otel/protocol/exporter/).
 
 ## Register Extension
 
-NLog will only recognize the type-alias `OpenTelemetry` when loading from an `NLog.config` file after registering the extension:
+The `OpenTelemetry` type alias is available in an `NLog.config` file after registering the extension:
 
 ```xml
 <extensions>
@@ -27,7 +24,7 @@ NLog will only recognize the type-alias `OpenTelemetry` when loading from an `NL
 </extensions>
 ```
 
-Alternative - register from code using the [fluent configuration API](https://github.com/NLog/NLog/wiki/Fluent-Configuration-API):
+Alternatively, register it in code using the [fluent configuration API](https://github.com/NLog/NLog/wiki/Fluent-Configuration-API):
 
 ```csharp
 LogManager.Setup().SetupExtensions(ext => {
@@ -37,7 +34,7 @@ LogManager.Setup().SetupExtensions(ext => {
 
 ## Configuration Examples
 
-Typical OTLP/HTTP endpoint URL is `http://localhost:4318/v1/logs`. The target also supports configuration from OpenTelemetry environment variables as fallback.
+The typical OTLP/HTTP endpoint URL is `http://localhost:4318/v1/logs`. The target also reads OpenTelemetry environment variables as fallbacks.
 
 ### NLog.config
 ```xml
@@ -97,7 +94,7 @@ NLog.LogManager.Setup().LoadConfiguration(builder =>
 
 | Parameter                | Default                        | Description                                                                  |
 | ------------------------ | ------------------------------ | -----------------------------------------------------------------------------|
-| _url_                    | OTEL_EXPORTER_OTLP_ENDPOINT    | OTLP/HTTP endpoint URL (Automatically appends `/v1/logs` when missing).      |
+| _url_                    | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | OTLP/HTTP endpoint URL. Falls back to `OTEL_EXPORTER_OTLP_ENDPOINT`, with `/v1/logs` appended to the generic endpoint. |
 | _layout_                 | `${message}`                   | Layout used to populate the OpenTelemetry `LogRecord.Body` field.            |
 | _traceId_                | `${activity:property=TraceId}` | Layout used to populate the OpenTelemetry `LogRecord.TraceId` field.         |
 | _spanId_                 | `${activity:property=SpanId}`  | Layout used to populate the OpenTelemetry `LogRecord.SpanId` field.          |
@@ -107,13 +104,13 @@ NLog.LogManager.Setup().LoadConfiguration(builder =>
 | _serviceVersion_         | `${assembly-version:Default=}` | OpenTelemetry `service.version` resource attribute.                          |
 | _hostName_               | `${hostname}`                  | OpenTelemetry `host.name` resource attribute.                                |
 | _resourceAttributes_     | OTEL_RESOURCE_ATTRIBUTES       | Additional OpenTelemetry resource attributes.                                |
-| _headers_                | OTEL_EXPORTER_OTLP_HEADERS     | Additional HTTP headers.                                                     |
+| _headers_                | `OTEL_EXPORTER_OTLP_LOGS_HEADERS` | Additional HTTP headers. Falls back to `OTEL_EXPORTER_OTLP_HEADERS`. |
 
 | Batching and Retry       | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
 | _batchSize_              | `200`               | Maximum number of log events to send in a single HTTP payload.                    |
-| _compress_               | `None`              | Optional compression of the OTLP/HTTP request payload. Supports None, GZip, and GZipFast. |
-| _maxPayloadSizeBytes_    | `40960`             | Max payload size in bytes before splitting into multiple HTTP requests when using `BatchSize` |
+| _compress_               | `None`              | Optional compression of the OTLP/HTTP request payload. Supports `None`, `GZip`, and `GZipFast`. |
+| _maxPayloadSizeBytes_    | `40960`             | Maximum payload size in bytes before splitting into multiple HTTP requests when using `batchSize`. |
 | _taskDelayMilliseconds_  | `50`                | Delay before processing queued log events. Increasing value can improve batching. |
 | _taskTimeoutSeconds_     | `150`               | Maximum lifetime in seconds for the entire task performing the HTTP request.      |
 | _retryCount_             | `3`                 | Number of retry attempts for failed write operations.                             |
@@ -122,7 +119,7 @@ NLog.LogManager.Setup().LoadConfiguration(builder =>
 | _overflowAction_         | `Discard`           | Action taken when the internal queue reaches its limit (Grow / Block / Discard).  |
 
 
-| Network and  Security    | Default             | Description                                                                       |
+| Network and Security    | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
 | _sendTimeoutSeconds_     | `30`                | HTTP request timeout in seconds.                                                  |
 | _sslCertificateFile_     |                     | Client certificate file used for mutual TLS authentication.                       |
@@ -149,14 +146,14 @@ Additional OpenTelemetry resource attributes can be configured using `resourceAt
 ## Structured Log Properties
 
 NLog event properties are exported as structured OpenTelemetry log attributes using the OTLP AnyValue format:
-- _Primitive values_ : strings, Booleans, integers, and floating-point numbers.
-- _Enum values_ : serialized as strings.
-- _DateTime values_ : DateTime and DateTimeOffset serialized using `ToString("o")` for round-trip ISO 8601 format.
-- _Dictionary values_ : `IDictionary` and `IEnumerable<KeyValuePair<string, object>>` represented as OpenTelemetry KeyValueList values.
-- _Arrays and collections_ : serialized as OpenTelemetry ArrayValue (Max 10.000 items)
-- _Nested collections_ : supported max recursion level of two.
+- **Primitive values:** strings, Booleans, integers, and floating-point numbers.
+- **Enum values:** serialized as strings.
+- **DateTime values:** `DateTime` and `DateTimeOffset` serialized using `ToString("o")` for round-trip ISO 8601 format.
+- **Dictionary values:** `IDictionary` and `IEnumerable<KeyValuePair<string, object>>` represented as OpenTelemetry KeyValueList values.
+- **Arrays and collections:** serialized as OpenTelemetry ArrayValue (maximum 10,000 items).
+- **Nested collections:** supported to a maximum recursion depth of two.
 
-Unknown or unrecognized object types fall back to string formatting. Values beyond the supported nesting depth will be formatted as strings. String values longer than 65.536 characters are truncated.
+Unknown or unrecognized object types fall back to string formatting. Values beyond the supported nesting depth are formatted as strings. String values longer than 65,536 characters are truncated.
 
 ## OpenTelemetry Environment Variables
 

@@ -3,15 +3,15 @@
 [![Version](https://badge.fury.io/nu/NLog.Targets.Network.svg)](https://www.nuget.org/packages/NLog.Targets.Network)
 [![CI](https://github.com/NLog/NLog.Targets.Network/actions/workflows/ci.yml/badge.svg)](https://github.com/NLog/NLog.Targets.Network/actions/workflows/ci.yml)
 
-NLog Network Target for sending messages using TCP / UDP sockets with support for SSL / TSL.
+The NLog Network Target sends messages over TCP and UDP sockets and supports SSL/TLS.
 
-If having trouble with output, then check [NLog InternalLogger](https://github.com/NLog/NLog/wiki/Internal-Logging) for clues. See also [Troubleshooting NLog](https://github.com/NLog/NLog/wiki/Logging-Troubleshooting)
+If you have trouble with output, check [NLog InternalLogger](https://github.com/NLog/NLog/wiki/Internal-Logging) for clues. See also [Troubleshooting NLog](https://github.com/NLog/NLog/wiki/Logging-Troubleshooting).
 
 See the [NLog Wiki - Network Target](https://github.com/NLog/NLog/wiki/Network-target) for available options and examples.
 
 ## NLog Syslog Target
 
-NLog SyslogTarget combines the NLog NetworkTarget with NLog SyslogLayout Rfc5424 / Rfc3164.
+NLog SyslogTarget combines the NLog NetworkTarget with NLog SyslogLayout for RFC 5424 and RFC 3164.
 
 See the [NLog Wiki - Syslog Target](https://github.com/NLog/NLog/wiki/Syslog-target) for available options and examples.
 
@@ -35,7 +35,7 @@ See the [NLog Wiki - Log4JXml Target](https://github.com/NLog/NLog/wiki/Log4JXml
 
 ## Register Extension
 
-NLog will only recognize type-alias `Network` when loading from `NLog.config`-file, if having added extension to `NLog.config`-file:
+The `Network` type alias is available when loading from an `NLog.config` file after registering the extension:
 
 ```xml
 <extensions>
@@ -43,7 +43,7 @@ NLog will only recognize type-alias `Network` when loading from `NLog.config`-fi
 </extensions>
 ```
 
-Alternative register from code using [fluent configuration API](https://github.com/NLog/NLog/wiki/Fluent-Configuration-API):
+Alternatively, register it in code using the [fluent configuration API](https://github.com/NLog/NLog/wiki/Fluent-Configuration-API):
 
 ```csharp
 LogManager.Setup().SetupExtensions(ext => {
