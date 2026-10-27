@@ -1,60 +1,29 @@
-# NLog Network Target
+# NLog Network Targets
 
-[![Version](https://badge.fury.io/nu/NLog.Targets.Network.svg)](https://www.nuget.org/packages/NLog.Targets.Network)
-[![CI](https://github.com/NLog/NLog.Targets.Network/actions/workflows/ci.yml/badge.svg)](https://github.com/NLog/NLog.Targets.Network/actions/workflows/ci.yml)
+This repository contains three NLog packages for sending log events to network services.
 
-NLog Network Target for sending messages using TCP / UDP sockets with support for SSL / TSL.
+## Packages
 
-If having trouble with output, then check [NLog InternalLogger](https://github.com/NLog/NLog/wiki/Internal-Logging) for clues. See also [Troubleshooting NLog](https://github.com/NLog/NLog/wiki/Logging-Troubleshooting)
+### NLog.Targets.Network
 
-See the [NLog Wiki - Network Target](https://github.com/NLog/NLog/wiki/Network-target) for available options and examples.
+[![NLog.Targets.Network](https://badge.fury.io/nu/NLog.Targets.Network.svg)](https://www.nuget.org/packages/NLog.Targets.Network)
 
-## NLog Syslog Target
+TCP and UDP network targets, with optional SSL/TLS support. Also includes layouts and targets for Syslog, Splunk, GELF, and Log4J XML.
 
-NLog SyslogTarget combines the NLog NetworkTarget with NLog SyslogLayout Rfc5424 / Rfc3164.
+[Package README](src/NLog.Targets.Network/README.md) | [Source code](src/NLog.Targets.Network/) | [Network Target documentation](https://github.com/NLog/NLog/wiki/Network-target)
 
-See the [NLog Wiki - Syslog Target](https://github.com/NLog/NLog/wiki/Syslog-target) for available options and examples.
+### NLog.Targets.HttpClient
 
-## NLog Splunk Target
+[![NLog.Targets.HttpClient](https://badge.fury.io/nu/NLog.Targets.HttpClient.svg)](https://www.nuget.org/packages/NLog.Targets.HttpClient)
 
-NLog SplunkTarget combines the NLog NetworkTarget with NLog SplunkLayout.
+HTTP and HTTPS target with batching, JSON and NDJSON payloads, compression, custom headers, authentication, client certificates, proxy support, and retries.
 
-See the [NLog Wiki - Splunk Target](https://github.com/NLog/NLog/wiki/Splunk-target) for available options and examples.
+[Package README](src/NLog.Targets.HttpClient/README.md) | [Source code](src/NLog.Targets.HttpClient/)
 
-## NLog GELF Target
+### NLog.Targets.OpenTelemetryHttp
 
-NLog GelfTarget combines the NLog NetworkTarget with NLog GelfLayout for Graylog Extended Logging Format (GELF).
+[![NLog.Targets.OpenTelemetryHttp](https://badge.fury.io/nu/NLog.Targets.OpenTelemetryHttp.svg)](https://www.nuget.org/packages/NLog.Targets.OpenTelemetryHttp)
 
-See the [NLog Wiki - Gelf Target](https://github.com/NLog/NLog/wiki/Gelf-target) for available options and examples.
+OTLP/HTTP exporter that sends logs to an OpenTelemetry Collector, including structured event properties and trace/span correlation.
 
-## NLog Log4JXml Target
-
-NLog Log4JXmlTarget combines the NLog NetworkTarget with NLog Log4JXmlEventLayout for NLogViewer / Chainsaw / Java Log4J.
-
-See the [NLog Wiki - Log4JXml Target](https://github.com/NLog/NLog/wiki/Log4JXml-target) for available options and examples.
-
-## Register Extension
-
-NLog will only recognize type-alias `Network` when loading from `NLog.config`-file, if having added extension to `NLog.config`-file:
-
-```xml
-<extensions>
-    <add assembly="NLog.Targets.Network"/>
-</extensions>
-```
-
-Alternative register from code using [fluent configuration API](https://github.com/NLog/NLog/wiki/Fluent-Configuration-API):
-
-```csharp
-LogManager.Setup().SetupExtensions(ext => {
-   ext.RegisterTarget<NLog.Targets.NetworkTarget>();
-   ext.RegisterTarget<NLog.Targets.Log4JXmlTarget>();
-   ext.RegisterTarget<NLog.Targets.GelfTarget>();
-   ext.RegisterTarget<NLog.Targets.SplunkTarget>();
-   ext.RegisterTarget<NLog.Targets.SyslogTarget>();
-   ext.RegisterLayout<NLog.Layouts.Log4JXmlEventLayout>();
-   ext.RegisterLayout<NLog.Layouts.GelfLayout>();
-   ext.RegisterLayout<NLog.Layouts.SplunkLayout>();
-   ext.RegisterLayout<NLog.Layouts.SyslogLayout>();
-});
-```
+[Package README](src/NLog.Targets.OpenTelemetryHttp/README.md) | [Source code](src/NLog.Targets.OpenTelemetryHttp/)
