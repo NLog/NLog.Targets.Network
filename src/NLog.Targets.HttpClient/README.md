@@ -4,22 +4,22 @@
 [![CI](https://github.com/NLog/NLog.Targets.Network/actions/workflows/ci.yml/badge.svg)](https://github.com/NLog/NLog.Targets.Network/actions/workflows/ci.yml)
 
 
-NLog `HttpClient` target for sending log events to HTTP or HTTPS endpoints.
+The NLog `HttpClient` target sends log events to HTTP or HTTPS endpoints.
 
 * Supports HTTP POST, GET, and custom HTTP methods.
-* Batch multiple log events into a single HTTP request.
+* Supports batching multiple log events into a single HTTP request.
 * Supports batching as JSON arrays or newline-delimited JSON (NDJSON).
-* GZip compression
-* Custom request headers
-* HTTP authentication
-* Client certificates (mTLS)
-* HTTP proxy support.
+* Supports GZip compression.
+* Supports custom request headers.
+* Supports HTTP authentication.
+* Supports client certificates (mTLS).
+* Supports HTTP proxies.
 
-If having trouble with output, then check [NLog InternalLogger](https://github.com/NLog/NLog/wiki/Internal-Logging) for clues. See also [Troubleshooting NLog](https://github.com/NLog/NLog/wiki/Logging-Troubleshooting).
+If you have trouble with output, check [NLog InternalLogger](https://github.com/NLog/NLog/wiki/Internal-Logging) for clues. See also [Troubleshooting NLog](https://github.com/NLog/NLog/wiki/Logging-Troubleshooting).
 
 ## Register Extension
 
-NLog will only recognize the type-alias `HttpClient` when loading from an `NLog.config` file after registering the extension:
+The `HttpClient` type alias is available in an `NLog.config` file after registering the extension:
 
 ```xml
 <extensions>
@@ -27,7 +27,7 @@ NLog will only recognize the type-alias `HttpClient` when loading from an `NLog.
 </extensions>
 ```
 
-Alternative - register from code using the [fluent configuration API](https://github.com/NLog/NLog/wiki/Fluent-Configuration-API):
+Alternatively, register it in code using the [fluent configuration API](https://github.com/NLog/NLog/wiki/Fluent-Configuration-API):
 
 ```csharp
 LogManager.Setup().SetupExtensions(ext => {
@@ -72,7 +72,7 @@ LogManager.Setup().SetupExtensions(ext => {
 
 | Parameter                | Default             | Description                                                                       |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------|
-| _url_                    | Required            | EndPoint URL for HTTP / HTTPS requests.                                           |
+| _url_                    | Required            | Endpoint URL for HTTP or HTTPS requests.                                          |
 | _layout_                 | Required            | Layout used to render log events into the HTTP request body.                      |
 | _httpMethod_             | `POST`              | HTTP method used when sending requests.                                           |
 | _contentType_            | `application/json`  | Value of the HTTP Content-Type header.                                            |
@@ -84,7 +84,7 @@ LogManager.Setup().SetupExtensions(ext => {
 | _compress_               | `None`              | Optional compression of the HTTP request payload. Supports `None`, `GZip`, and `GZipFast`. |
 | _lineEnding_             | `LF`                | Line separator used between log events when batching.                             |
 | _batchAsJsonArray_       | `false`             | Wraps batched log events in a JSON array instead of separating them with `lineEnding`. |
-| _maxPayloadSizeBytes_    | `40960`             | Max payload size in bytes before splitting into multiple HTTP requests when using `BatchSize` |
+| _maxPayloadSizeBytes_    | `40960`             | Maximum payload size in bytes before splitting into multiple HTTP requests when using `batchSize`. |
 | _taskDelayMilliseconds_  | `1`                 | Delay before processing queued log events. Increasing value can improve batching. |
 | _taskTimeoutSeconds_     | `150`               | Maximum lifetime in seconds for the entire task performing the HTTP request.      |
 | _retryCount_             | `0`                 | Number of retry attempts for failed write operations.                             |
@@ -168,9 +168,9 @@ The `Authorization` header is mandatory for Splunk HEC: `Authorization: Splunk <
 
 For production use, consider targeting a write index alias managed by your rollover/index lifecycle strategy rather than a permanently fixed index name. Authentication can be configured using the standard `HttpClient` target authentication and header options.
 
-Note OpenSearch Bulk API can return HTTP 200 even when bulk operations partially fail. The HttpClient target retries requests based on the HTTP status code, but does not inspect the Bulk API response body for per-document failures.
+Note that the OpenSearch Bulk API can return HTTP 200 even when some bulk operations fail. The HttpClient target retries requests based on the HTTP status code, but does not inspect the Bulk API response body for per-document failures.
 
-Note that log export depends on in-memory queue, so LogEvents can be lost on application-crash / -exit (without correct flush/shutdown). If stronger delivery guarantee is required, then consider using [Elastic.CommonSchema.NLog](https://www.nuget.org/packages/Elastic.CommonSchema.NLog) together with NLog FileTarget, and use **Fluent Bit** (AWS FireLens) or **Data Prepper** to forward the logs to OpenSearch.
+Log export depends on an in-memory queue, so log events can be lost if the application crashes or exits without a proper flush or shutdown. For stronger delivery guarantees, consider using [Elastic.CommonSchema.NLog](https://www.nuget.org/packages/Elastic.CommonSchema.NLog) with the NLog FileTarget, then use **Fluent Bit** (AWS FireLens) or **Data Prepper** to forward the logs to OpenSearch.
 
 ## Client Certificates (mTLS)
 
@@ -184,7 +184,7 @@ Mutual TLS authentication can be enabled using a client certificate:
         sslCertificatePassword="secret" />
 ```
 
-Alternatively load the client certificate from the Windows certificate store by thumbprint:
+Alternatively, load the client certificate from the Windows certificate store by thumbprint:
 
 ```xml
 <target xsi:type="HttpClient"
