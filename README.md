@@ -1,4 +1,5 @@
 # NLog Network Targets
+[![CI](https://github.com/NLog/NLog.Targets.Network/actions/workflows/ci.yml/badge.svg)](https://github.com/NLog/NLog.Targets.Network/actions/workflows/ci.yml)
 
 This repository contains three NLog packages for sending log events to network services.
 
