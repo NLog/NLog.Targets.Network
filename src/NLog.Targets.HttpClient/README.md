@@ -1,7 +1,8 @@
 # NLog.Targets.HttpClient
 
 [![Version](https://badge.fury.io/nu/NLog.Targets.HttpClient.svg)](https://www.nuget.org/packages/NLog.Targets.HttpClient)
-[![AppVeyor](https://img.shields.io/appveyor/ci/NLog/NLog-Targets-Network/master.svg)](https://ci.appveyor.com/project/NLog/NLog-Targets-Network/branch/master)
+[![CI](https://github.com/NLog/NLog.Targets.Network/actions/workflows/ci.yml/badge.svg)](https://github.com/NLog/NLog.Targets.Network/actions/workflows/ci.yml)
+
 
 NLog `HttpClient` target for sending log events to HTTP or HTTPS endpoints.
 

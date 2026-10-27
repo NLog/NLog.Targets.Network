@@ -1,7 +1,8 @@
 # NLog.Targets.OpenTelemetryHttp
 
 [![Version](https://badge.fury.io/nu/NLog.Targets.OpenTelemetryHttp.svg)](https://www.nuget.org/packages/NLog.Targets.OpenTelemetryHttp)
-[![AppVeyor](https://img.shields.io/appveyor/ci/NLog/NLog-Targets-Network/master.svg)](https://ci.appveyor.com/project/NLog/NLog-Targets-Network/branch/master)
+[![CI](https://github.com/NLog/NLog.Targets.Network/actions/workflows/ci.yml/badge.svg)](https://github.com/NLog/NLog.Targets.Network/actions/workflows/ci.yml)
+
 
 NLog `OpenTelemetry` target for exporting log events to an OpenTelemetry Collector or any OTLP/HTTP-compatible endpoint.
 
