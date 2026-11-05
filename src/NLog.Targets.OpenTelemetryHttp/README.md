@@ -155,6 +155,21 @@ NLog event properties are exported as structured OpenTelemetry log attributes us
 
 Unknown or unrecognized object types fall back to string formatting. Values beyond the supported nesting depth are formatted as strings. String values longer than 65,536 characters are truncated.
 
+## Azure Application Insights
+
+Microsoft Application Insights ver. 3.x supports log ingestion using the OpenTelemetry Protocol (OTLP).
+
+NLog.Targets.OpenTelemetryHttp supports custom HTTP headers, allowing NLog to send logs directly to Application Insights using HTTP authentication headers:
+
+```xml
+<target xsi:type="OpenTelemetry" name="applicationInsights"
+        url="https://your-app-insights-endpoint/v1/logs">
+    <header name="x-otlp-api-key" layout="${configsetting:name=ApplicationInsights.InstrumentationKey}" />
+</target>
+```
+
+**Note** The recommended approach for sending logs and telemetry to Application Insights is to use: `builder.Services.AddOpenTelemetry().UseAzureMonitor(opt => ...)`.
+
 ## OpenTelemetry Environment Variables
 
 The target automatically resolves standard OpenTelemetry environment variables when equivalent target properties have not been explicitly configured.
