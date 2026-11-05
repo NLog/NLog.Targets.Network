@@ -229,7 +229,7 @@ namespace NLog.Targets
                     serviceNameLayout = null;
                 else if (attr.Name == "service.version")
                     serviceVersionLayout = null;
-                else if (attr.Name == "process.id")
+                else if (attr.Name == "process.pid")
                 {
                     processId = null;
                     if (long.TryParse(stringValue, out var parsedProcessId))
@@ -264,7 +264,7 @@ namespace NLog.Targets
             }
             if (processId.HasValue)
             {
-                yield return new KeyValuePair<string, object>("process.id", processId.Value);
+                yield return new KeyValuePair<string, object>("process.pid", processId.Value);
             }
             if (hostNameLayout != null)
             {
