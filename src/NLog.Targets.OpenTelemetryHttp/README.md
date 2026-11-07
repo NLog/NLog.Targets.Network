@@ -168,7 +168,7 @@ NLog.Targets.OpenTelemetryHttp supports custom HTTP headers, allowing NLog to se
 </target>
 ```
 
-**Note** The recommended approach for sending logs and telemetry to Application Insights is to use: `builder.Services.AddOpenTelemetry().UseAzureMonitor(opt => ...)`.
+**Note** The official approach for sending logs and telemetry to Application Insights is to use: `builder.Services.AddOpenTelemetry().UseAzureMonitor(opt => ...)`.
 
 ## OpenTelemetry Environment Variables
 
