@@ -53,8 +53,8 @@ namespace NLog.Internal
     {
         private static readonly long UnixEpochTicks = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks;
         private const int MaxStringLength = 64 * 1024;
-        private const int MaxCollectionItems = 10000;
-        private const int MaxRecursionDepth = 2;
+        public int MaxItemsPerCollection { get; set; } = 1000;
+        public int MaxRecursionDepth { get; set; } = 2;
 
         /// <summary>Gets or sets the layout for capturing the W3C TraceId for each LogRecord (Hexadecimal String: 32 chars).</summary>
         public Layout<System.Diagnostics.ActivityTraceId?>? TraceId { get; set; }
@@ -151,7 +151,7 @@ namespace NLog.Internal
                     if (logEvent.Properties.TryGetValue("EventId", out var eventIdObj) && eventIdObj != null)
                     {
                         eventId = "EventId";
-                        WriteKeyValue(stream, LogRecordAttributesField, "event.id", eventIdObj);
+                        WriteKeyValueScalar(stream, LogRecordAttributesField, "event.id", eventIdObj);
                     }
                     if (logEvent.Properties.TryGetValue("EventName", out var eventNameObj) && eventNameObj is string eventNameString)
                     {
@@ -175,7 +175,8 @@ namespace NLog.Internal
                         if (!ReferenceEquals(eventNameKey, string.Empty) && key == eventNameKey)
                             continue;
 
-                        WriteKeyValue(stream, LogRecordAttributesField, key, prop.Value);
+                        var visitedObjects = new SingleItemOptimizedHashSet<object>();
+                        WriteKeyValue(stream, LogRecordAttributesField, key, prop.Value, ref visitedObjects);
                     }
                 }
                 finally
@@ -230,7 +231,7 @@ namespace NLog.Internal
             {
                 if (_scopeLogsWriter != null)
                     throw new InvalidOperationException("Cannot add Resource attributes after ScopeLogs has started.");
-                WriteKeyValue(_stream, 1, key, value);
+                WriteKeyValueScalar(_stream, 1, key, value);
             }
 
             public void BeginScope(string scopeName)
@@ -284,7 +285,7 @@ namespace NLog.Internal
 
         private static void BuildAnyValueString(MemoryStream stream, int fieldNumber, string value, int maxByteCount)
         {
-            if (string.IsNullOrEmpty(value))
+            if (value is null)
                 return;
 
             using (BeginSubmessageField(stream, fieldNumber, maxByteCount))
@@ -320,13 +321,74 @@ namespace NLog.Internal
         }
 #endif
 
-        internal static void BuildAnyValue(MemoryStream stream, int fieldNumber, object? value, int recursionDepth = 0)
+        private static SingleItemOptimizedHashSet<object>.SingleItemScopedInsert StartCollectionScope(ref SingleItemOptimizedHashSet<object> objectsInPath, object value)
+        {
+            return new SingleItemOptimizedHashSet<object>.SingleItemScopedInsert(value, ref objectsInPath, true);
+        }
+
+        internal void BuildAnyValue(MemoryStream stream, int fieldNumber, object? value, ref SingleItemOptimizedHashSet<object> visitedObjects, int recursionDepth = 0)
+        {
+            if (BuildAnyValueScalar(stream, fieldNumber, value))
+                return;
+
+            if (value is IDictionary dict && recursionDepth < MaxRecursionDepth && !visitedObjects.Contains(dict))
+            {
+                using (StartCollectionScope(ref visitedObjects, dict))
+                {
+                    using (BeginSubmessageField(stream, fieldNumber))
+                    {
+                        BuildAnyValueDictionary(stream, dict, ref visitedObjects, recursionDepth + 1);
+                    }
+                }
+                return;
+            }
+
+            if (value is IEnumerable<KeyValuePair<string, object>> items && recursionDepth < MaxRecursionDepth && !visitedObjects.Contains(value))
+            {
+                using (StartCollectionScope(ref visitedObjects, items))
+                {
+                    using (BeginSubmessageField(stream, fieldNumber))
+                    {
+                        BuildAnyValueDictionary(stream, items, ref visitedObjects, recursionDepth + 1);
+                    }
+                }
+                return;
+            }
+
+            if (value is IList list && recursionDepth < MaxRecursionDepth && !visitedObjects.Contains(value))
+            {
+                using (StartCollectionScope(ref visitedObjects, list))
+                {
+                    using (BeginSubmessageField(stream, fieldNumber))
+                    {
+                        BuildAnyValueArray(stream, list, ref visitedObjects, recursionDepth + 1);
+                    }
+                }
+                return;
+            }
+
+            if (value is IEnumerable enumerable && recursionDepth < MaxRecursionDepth && !visitedObjects.Contains(value))
+            {
+                using (StartCollectionScope(ref visitedObjects, enumerable))
+                {
+                    using (BeginSubmessageField(stream, fieldNumber))
+                    {
+                        BuildAnyValueArray(stream, enumerable, ref visitedObjects, recursionDepth + 1);
+                    }
+                }
+                return;
+            }
+
+            BuildAnyValueString(stream, fieldNumber, value?.ToString() ?? string.Empty);
+        }
+
+        private static bool BuildAnyValueScalar(MemoryStream stream, int fieldNumber, object? value)
         {
             // AnyValue { string string_value = 1; bool bool_value = 2; int64 int_value = 3; double double_value = 4; ArrayValue array_value = 5; KeyValueList kvlist_value = 6 }
             if (value is Enum)
             {
                 BuildAnyValueString(stream, fieldNumber, value?.ToString() ?? string.Empty);
-                return;
+                return true;
             }
 
             if (value is IConvertible convertible)
@@ -339,7 +401,7 @@ namespace NLog.Internal
                         {
                             WriteVarintField(stream, AnyValueField.BoolValue, convertible.ToBoolean(System.Globalization.CultureInfo.InvariantCulture) ? 1UL : 0UL);
                         }
-                        return;
+                        return true;
                     case TypeCode.SByte:
                     case TypeCode.Int16:
                     case TypeCode.Int32:
@@ -350,7 +412,7 @@ namespace NLog.Internal
                         {
                             WriteVarintField(stream, AnyValueField.IntValue, varInt);
                         }
-                        return;
+                        return true;
                     case TypeCode.Byte:
                     case TypeCode.UInt16:
                     case TypeCode.UInt32:
@@ -361,7 +423,7 @@ namespace NLog.Internal
                         {
                             WriteVarintField(stream, AnyValueField.IntValue, varUInt);
                         }
-                        return;
+                        return true;
                     case TypeCode.Single:
                     case TypeCode.Double:
                     case TypeCode.Decimal:
@@ -371,17 +433,17 @@ namespace NLog.Internal
                         {
                             WriteFixed64Field(stream, AnyValueField.DoubleValue, unchecked((ulong)BitConverter.DoubleToInt64Bits(doubleVal)));
                         }
-                        return;
+                        return true;
                     case TypeCode.DateTime:
 #if NET8_0_OR_GREATER
                         BuildAnyValueSpanFormattable(stream, fieldNumber, convertible.ToDateTime(System.Globalization.CultureInfo.InvariantCulture), "o");
 #else
                         BuildAnyValueString(stream, fieldNumber, convertible.ToDateTime(System.Globalization.CultureInfo.InvariantCulture).ToString("o", System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
 #endif
-                        return;
+                        return true;
                     default:
                         BuildAnyValueString(stream, fieldNumber, convertible.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
-                        return;
+                        return true;
                 }
             }
 
@@ -392,63 +454,32 @@ namespace NLog.Internal
 #else
                 BuildAnyValueString(stream, fieldNumber, dateTimeOffset.ToString("o", System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
 #endif
-                return;
+                return true;
             }
 
 #if NET8_0_OR_GREATER
             if (value is ISpanFormattable spanFormattable)
             {
                 BuildAnyValueSpanFormattable(stream, fieldNumber, spanFormattable, format: null);
-                return;
+                return true;
             }
 #endif
 
             if (value is IFormattable formattable)
             {
                 BuildAnyValueString(stream, fieldNumber, formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
-                return;
+                return true;
             }
 
-            if (value is IDictionary dict && recursionDepth < MaxRecursionDepth)
+            if (value is null)
             {
-                using (BeginSubmessageField(stream, fieldNumber))
-                {
-                    BuildAnyValueDictionary(stream, dict, recursionDepth + 1);
-                }
-                return;
+                return true;
             }
 
-            if (value is IEnumerable<KeyValuePair<string, object>> items && recursionDepth < MaxRecursionDepth)
-            {
-                using (BeginSubmessageField(stream, fieldNumber))
-                {
-                    BuildAnyValueDictionary(stream, items, recursionDepth + 1);
-                }
-                return;
-            }
-
-            if (value is IList list && recursionDepth < MaxRecursionDepth)
-            {
-                using (BeginSubmessageField(stream, fieldNumber))
-                {
-                    BuildAnyValueArray(stream, list, recursionDepth + 1);
-                }
-                return;
-            }
-
-            if (value is IEnumerable enumerable && recursionDepth < MaxRecursionDepth)
-            {
-                using (BeginSubmessageField(stream, fieldNumber))
-                {
-                    BuildAnyValueArray(stream, enumerable, recursionDepth + 1);
-                }
-                return;
-            }
-
-            BuildAnyValueString(stream, fieldNumber, value?.ToString() ?? string.Empty);
+            return false;
         }
 
-        private static void BuildAnyValueDictionary(MemoryStream stream, IDictionary dict, int recursionDepth = 0)
+        private void BuildAnyValueDictionary(MemoryStream stream, IDictionary dict, ref SingleItemOptimizedHashSet<object> visitedObjects, int recursionDepth = 0)
         {
             // AnyValue { KeyValueList kvlist_value = 6 }
             // KeyValueList { repeated KeyValue values = 1 }
@@ -464,10 +495,10 @@ namespace NLog.Internal
                         if (key is null || string.IsNullOrEmpty(key))
                             continue;
 
-                        if (++collectionCount > MaxCollectionItems)
+                        if (++collectionCount > MaxItemsPerCollection)
                             break;
 
-                        WriteKeyValue(stream, 1, key, enumerator.Value, recursionDepth);
+                        WriteKeyValue(stream, 1, key, enumerator.Value, ref visitedObjects, recursionDepth);
                     }
                 }
                 finally
@@ -475,9 +506,15 @@ namespace NLog.Internal
                     (enumerator as IDisposable)?.Dispose();
                 }
             }
+
+            if (collectionCount == 0)
+            {
+                WriteTag(stream, AnyValueField.KvListValue, WireType.LengthDelimited);
+                WriteVarint(stream, 0);
+            }
         }
 
-        private static void BuildAnyValueDictionary(MemoryStream stream, IEnumerable<KeyValuePair<string, object>> items, int recursionDepth = 0)
+        private void BuildAnyValueDictionary(MemoryStream stream, IEnumerable<KeyValuePair<string, object>> items, ref SingleItemOptimizedHashSet<object> visitedObjects, int recursionDepth = 0)
         {
             // AnyValue { KeyValueList kvlist_value = 6 }
             // KeyValueList { repeated KeyValue values = 1 }
@@ -491,29 +528,42 @@ namespace NLog.Internal
                     if (string.IsNullOrEmpty(item.Key))
                         continue;
 
-                    if (++collectionCount > MaxCollectionItems)
+                    if (++collectionCount > MaxItemsPerCollection)
                         break;
 
-                    WriteKeyValue(stream, 1, item.Key, item.Value, recursionDepth);
+                    WriteKeyValue(stream, 1, item.Key, item.Value, ref visitedObjects, recursionDepth);
                 }
+            }
+
+            if (collectionCount == 0)
+            {
+                WriteTag(stream, AnyValueField.KvListValue, WireType.LengthDelimited);
+                WriteVarint(stream, 0);
             }
         }
 
-        private static void BuildAnyValueArray(MemoryStream stream, IList list, int recursionDepth = 0)
+        private void BuildAnyValueArray(MemoryStream stream, IList list, ref SingleItemOptimizedHashSet<object> visitedObjects, int recursionDepth = 0)
         {
             // AnyValue { ArrayValue array_value = 5 }
             // ArrayValue { repeated AnyValue values = 1 }
-            int listCount = list.Count < MaxCollectionItems ? list.Count : MaxCollectionItems;
+            int listCount = list.Count < MaxItemsPerCollection ? list.Count : MaxItemsPerCollection;
+            if (listCount == 0)
+            {
+                WriteTag(stream, AnyValueField.ArrayValue, WireType.LengthDelimited);
+                WriteVarint(stream, 0);
+                return;
+            }
+
             using (BeginSubmessageField(stream, AnyValueField.ArrayValue))
             {
                 for (int i = 0; i < listCount; i++)
                 {
-                    BuildAnyValue(stream, 1, list[i], recursionDepth);
+                    BuildAnyValue(stream, 1, list[i], ref visitedObjects, recursionDepth);
                 }
             }
         }
 
-        private static void BuildAnyValueArray(MemoryStream stream, IEnumerable enumerable, int recursionDepth = 0)
+        private void BuildAnyValueArray(MemoryStream stream, IEnumerable enumerable, ref SingleItemOptimizedHashSet<object> visitedObjects, int recursionDepth = 0)
         {
             // AnyValue { ArrayValue array_value = 5 }
             // ArrayValue { repeated AnyValue values = 1 }
@@ -525,16 +575,22 @@ namespace NLog.Internal
                 {
                     while (enumerator.MoveNext())
                     {
-                        if (++collectionCount > MaxCollectionItems)
+                        if (++collectionCount > MaxItemsPerCollection)
                             break;
 
-                        BuildAnyValue(stream, 1, enumerator.Current, recursionDepth);
+                        BuildAnyValue(stream, 1, enumerator.Current, ref visitedObjects, recursionDepth);
                     }
                 }
                 finally
                 {
                     (enumerator as IDisposable)?.Dispose();
                 }
+            }
+
+            if (collectionCount == 0)
+            {
+                WriteTag(stream, AnyValueField.ArrayValue, WireType.LengthDelimited);
+                WriteVarint(stream, 0);
             }
         }
 
@@ -551,7 +607,7 @@ namespace NLog.Internal
             }
         }
 
-        internal static void WriteKeyValue(MemoryStream parent, int fieldNumber, string key, object? value, int recursionDepth = 0)
+        internal static void WriteKeyValueScalar(MemoryStream parent, int fieldNumber, string key, object? value)
         {
             if (value is string stringValue)
             {
@@ -566,7 +622,28 @@ namespace NLog.Internal
                 using (BeginSubmessageField(parent, fieldNumber, maxByteCount))
                 {
                     WriteStringField(parent, 1, key, keyMaxBytes);
-                    BuildAnyValue(parent, 2, value, recursionDepth);
+                    if (!BuildAnyValueScalar(parent, 2, value))
+                        BuildAnyValueString(parent, 2, value?.ToString() ?? string.Empty);
+                }
+            }
+        }
+
+        private void WriteKeyValue(MemoryStream parent, int fieldNumber, string key, object? value, ref SingleItemOptimizedHashSet<object> visitedObjects, int recursionDepth = 0)
+        {
+            if (value is string stringValue)
+            {
+                WriteKeyStringValue(parent, fieldNumber, key, stringValue);
+            }
+            else
+            {
+                // KeyValue { string key = 1; AnyValue value = 2 }
+                var keyMaxBytes = Encoding.UTF8.GetMaxByteCount(key.Length);
+                // key string field: tag(1)+length(up to 2)+keyMaxBytes; AnyValue wrapper: tag(1)+length(1); largest scalar (int64/uint64): tag(1)+10 varint bytes
+                var maxByteCount = value is IConvertible ? keyMaxBytes + 16 : int.MaxValue;
+                using (BeginSubmessageField(parent, fieldNumber, maxByteCount))
+                {
+                    WriteStringField(parent, 1, key, keyMaxBytes);
+                    BuildAnyValue(parent, 2, value, ref visitedObjects, recursionDepth);
                 }
             }
         }

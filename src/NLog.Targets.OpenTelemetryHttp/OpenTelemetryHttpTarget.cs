@@ -118,14 +118,32 @@ namespace NLog.Targets
         /// <remarks>Default: <c>${activity:property=SpanId}</c> — captures Activity.Current SpanId on the logging thread.</remarks>
         public Layout<System.Diagnostics.ActivitySpanId?>? SpanId { get; set; } = Layout<System.Diagnostics.ActivitySpanId?>.FromMethod(static evt => System.Diagnostics.Activity.Current?.SpanId is System.Diagnostics.ActivitySpanId activitySpanId && !ReferenceEquals(EmptySpanIdToHexString, activitySpanId.ToHexString()) ? activitySpanId : null);
 
+        /// <summary>
+        /// Gets or sets the maximum recursion depth allowed during reflection.
+        /// </summary>
+        /// <remarks>Default: 2</remarks>
+        public Layout<int> MaxRecursionDepth { get; set; } = 2;
+
+        /// <summary>
+        /// Gets or sets the maximum number of items to enumerate from each collection during reflection.
+        /// </summary>
+        /// <remarks>Default: 1000</remarks>
+        public Layout<int> MaxItemsPerCollection { get; set; } = 1000;
+
         /// <inheritdoc />
         protected override void InitializeTarget()
         {
             ResolveOtlpEnvironmentVariables();
+
+            var maxRecursionDepth = RenderLogEvent(MaxRecursionDepth, LogEventInfo.CreateNullEvent(), 2);
+            var maxItemsPerCollection = RenderLogEvent(MaxItemsPerCollection, LogEventInfo.CreateNullEvent(), 1000);
+
             _serializer = new OtlpProtobufSerializer
             {
                 TraceId = TraceId,
                 SpanId = SpanId,
+                MaxRecursionDepth = maxRecursionDepth,
+                MaxItemsPerCollection = maxItemsPerCollection,
             };
             _cachedResourcePayload = default;
             base.InitializeTarget();

@@ -101,7 +101,7 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
     /// </remarks>
     public class OtlpProtobufSerializerTests
     {
-        #region Structure tests
+        #region LogRecord Structure tests
 
         [Fact]
         public void Serialize_ProducesValidExportLogsServiceRequest_TopLevelStructure()
@@ -201,9 +201,27 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
             Assert.Equal(3, logRecords.Count);
         }
 
-        #endregion
+        [Fact]
+        public void Serialize_EventId_IsEncodedAsEventIdAttribute()
+        {
+            var logEvent = new LogEventInfo(LogLevel.Info, "Logger", "msg");
+            logEvent.Properties["EventId"] = 123;
+            logEvent.Properties["EventName"] = "OrderCreated";
 
-        #region LogRecord field tests
+            var output = Serialize(new OtlpProtobufSerializer(), logEvent);
+
+            var attributes = ProtobufParser.GetLogRecordAttributes(output);
+
+            Assert.Contains("event.id", attributes.Keys);
+            Assert.DoesNotContain("EventId", attributes.Keys);
+            Assert.DoesNotContain("EventName", attributes.Keys);
+
+            Assert.Equal(123L, attributes["event.id"].AsAnyValue().AsInt64());
+
+            var logRecord = ProtobufParser.GetLogRecord(output);
+            var fields = logRecord.AsMessage();
+            Assert.Equal("OrderCreated", fields.GetField(12).AsString());
+        }
 
         [Fact]
         public void Serialize_LogRecord_TimestampIsFixed64UnixNanoseconds()
@@ -407,10 +425,6 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
             Assert.DoesNotContain(lrFields, f => f.FieldNumber == 10);
         }
 
-        #endregion
-
-        #region Resource tests
-
         [Fact]
         public void Serialize_Resource_AdditionalResourceAttributesPresent()
         {
@@ -589,6 +603,49 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
         }
 
         [Fact]
+        public void AnyValue_EmptyList_EncodedAsEmptyArray()
+        {
+            var output = SerializeWithProperty("items", new List<object>());
+
+            var attributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValue = attributes["items"].AsAnyValue();
+
+            Assert.Equal(5, anyValue.FieldNumber);
+            Assert.Empty(anyValue.AsMessage());
+        }
+
+        [Fact]
+        public void AnyValue_EmptyDictionary_EncodedAsEmptyKeyValueList()
+        {
+            var output = SerializeWithProperty(
+                "map", new Dictionary<string, object>());
+
+            var attributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValue = attributes["map"].AsAnyValue();
+
+            Assert.Equal(6, anyValue.FieldNumber);
+            Assert.Empty(anyValue.AsMessage());
+        }
+
+        [Fact]
+        public void AnyValue_EmptyNestedCollections_EncodedCorrectly()
+        {
+            var dict = new Dictionary<string, object>
+            {
+                ["list"] = new List<object>(),
+                ["dict"] = new Dictionary<string, object>()
+            };
+            var output = SerializeWithProperty("map", dict);
+            var logRecordAttributes = ProtobufParser.GetLogRecordAttributes(output);
+            var anyValueWrapper = logRecordAttributes["map"];
+
+            // AnyValue { KeyValueList kvlist_value = 6 } → field 6, wire type 2
+            var map = anyValueWrapper.GetField(6).AsMessage().GetFieldValues(1); // KeyValueList { repeated KeyValue values = 1 }
+            Assert.Empty(map["list"].AsMessage().GetField(5).AsMessage());
+            Assert.Empty(map["dict"].AsMessage().GetField(6).AsMessage());
+        }
+
+        [Fact]
         public void AnyValue_List_EncodedAsArrayValueField5()
         {
             var list = new List<object> { "alpha", 99, true };
@@ -602,6 +659,26 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
             Assert.Equal("alpha", array[0].GetField(1).AsString());
             Assert.Equal(99L, array[1].GetField(3).AsInt64());
             Assert.Equal(1L, array[2].GetField(2).AsInt64());
+        }
+
+        [Fact]
+        public void AnyValue_List_RespectsMaxItemsPerCollection()
+        {
+            var serializer = new OtlpProtobufSerializer
+            {
+                MaxItemsPerCollection = 2
+            };
+
+            var logEvent = new LogEventInfo(LogLevel.Info, "Logger", "msg");
+
+            logEvent.Properties["items"] = new List<object> {"one", "two", "three", "four" };
+
+            var output = Serialize(serializer, logEvent);
+
+            var attributes = ProtobufParser.GetLogRecordAttributes(output);
+            var array = attributes["items"].AsArrayValue();
+
+            Assert.Equal(2, array.Count);
         }
 
         [Fact]
@@ -652,6 +729,35 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
         }
 
         [Fact]
+        public void AnyValue_Dictionary_RespectsMaxItemsPerCollection()
+        {
+            var serializer = new OtlpProtobufSerializer
+            {
+                MaxItemsPerCollection = 2
+            };
+
+            var dict = new Dictionary<string, object>
+            {
+                ["one"] = 1,
+                ["two"] = 2,
+                ["three"] = 3
+            };
+
+            var logEvent = new LogEventInfo(LogLevel.Info, "Logger", "msg");
+            logEvent.Properties["map"] = dict;
+
+            var output = Serialize(serializer, logEvent);
+
+            var attributes = ProtobufParser.GetLogRecordAttributes(output);
+            var map = attributes["map"]
+                .GetField(6)
+                .AsMessage()
+                .GetFieldValues(1);
+
+            Assert.Equal(2, map.Count);
+        }
+
+        [Fact]
         public void AnyValue_Expando_Nested_EncodedAsDictionaryValueField6()
         {
             var payload = new List<KeyValuePair<string, object>>
@@ -676,6 +782,65 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
         }
 
         [Fact]
+        public void AnyValue_CircularDictionaryReference_DoesNotRecurseIndefinitely()
+        {
+            var dict = new Dictionary<string, object>();
+            dict["self"] = dict;
+
+            var output = SerializeWithProperty("map", dict);
+
+            var attributes = ProtobufParser.GetLogRecordAttributes(output);
+
+            Assert.Contains("map", attributes.Keys);
+        }
+
+        [Fact]
+        public void AnyValue_CircularListReference_DoesNotRecurseIndefinitely()
+        {
+            var list = new List<object>();
+            list.Add("value");
+            list.Add(list);
+
+            var output = SerializeWithProperty("items", list);
+
+            var attributes = ProtobufParser.GetLogRecordAttributes(output);
+
+            Assert.Contains("items", attributes.Keys);
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        public void AnyValue_NestedCollections_RespectMaxRecursionDepth(int maxDepth)
+        {
+            var serializer = new OtlpProtobufSerializer
+            {
+                MaxRecursionDepth = maxDepth
+            };
+
+            var nested = new Dictionary<string, object>
+            {
+                ["level1"] = new Dictionary<string, object>
+                {
+                    ["level2"] = new Dictionary<string, object>
+                    {
+                        ["level3"] = "value"
+                    }
+                }
+            };
+
+            var logEvent = new LogEventInfo(LogLevel.Info, "Logger", "msg");
+            logEvent.Properties["nested"] = nested;
+
+            var output = Serialize(serializer, logEvent);
+
+            var attributes = ProtobufParser.GetLogRecordAttributes(output);
+
+            Assert.Contains("nested", attributes.Keys);
+        }
+
+        [Fact]
         public void AnyValue_NullValue_AttributeKeyPresentWithoutValueField()
         {
             var output = SerializeWithProperty("n", (object)null);
@@ -694,8 +859,6 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
         }
 
         #endregion
-
-        #region Helper methods for building serializer output
 
         private static byte[] Serialize(OtlpProtobufSerializer serializer, LogEventInfo logEvent, string scopeName = "NLog")
         {
@@ -747,24 +910,9 @@ namespace NLog.Targets.OpenTelemetryHttp.Tests
             return Serialize(serializer, logEvent);
         }
 
-        #endregion
-
-        #region Protobuf navigation helpers
-
         private static string ToHex(byte[] bytes)
         {
             return BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();
         }
-
-        #endregion
-
-        #region Protobuf reader helpers
-
-
-
-
-
-        #endregion
     }
-
 }

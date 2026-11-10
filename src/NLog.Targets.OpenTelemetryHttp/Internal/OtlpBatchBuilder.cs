@@ -77,7 +77,7 @@ namespace NLog.Internal
                 if (string.IsNullOrEmpty(resourceAttribute.Key))
                     continue;
 
-                OtlpProtobufSerializer.WriteKeyValue(
+                OtlpProtobufSerializer.WriteKeyValueScalar(
                     resourceStream,
                     1,
                     resourceAttribute.Key,
