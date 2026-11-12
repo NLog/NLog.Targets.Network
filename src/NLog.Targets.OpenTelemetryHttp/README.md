@@ -99,6 +99,8 @@ NLog.LogManager.Setup().LoadConfiguration(builder =>
 | _traceId_                | `${activity:property=TraceId}` | Layout used to populate the OpenTelemetry `LogRecord.TraceId` field.         |
 | _spanId_                 | `${activity:property=SpanId}`  | Layout used to populate the OpenTelemetry `LogRecord.SpanId` field.          |
 | _includeEventProperties_ | `true`                         | Includes NLog event properties as OpenTelemetry log attributes.              |
+| _maxRecursionDepth_      | `2`                            | Max nested depth when serializing dictionaries and collections as structured OpenTelemetry values. |
+| _maxItemsPerCollection_  | `1000`                         | Max number of items serialized from an individual collection. Additional items are omitted. |
 | _scopeName_              | `NLog`                         | OpenTelemetry instrumentation scope name.                                    |
 | _serviceName_            | `${appdomain:format=Friendly}` | OpenTelemetry `service.name` resource attribute.                             |
 | _serviceVersion_         | `${assembly-version:Default=}` | OpenTelemetry `service.version` resource attribute.                          |
@@ -150,8 +152,8 @@ NLog event properties are exported as structured OpenTelemetry log attributes us
 - **Enum values:** serialized as strings.
 - **DateTime values:** `DateTime` and `DateTimeOffset` serialized using `ToString("o")` for round-trip ISO 8601 format.
 - **Dictionary values:** `IDictionary` and `IEnumerable<KeyValuePair<string, object>>` represented as OpenTelemetry KeyValueList values.
-- **Arrays and collections:** serialized as OpenTelemetry ArrayValue (maximum 10,000 items).
-- **Nested collections:** supported to a maximum recursion depth of two.
+- **Arrays and collections:** serialized as OpenTelemetry ArrayValue, with default max of 1000 items, but can be adjusted with setting `maxItemsPerCollection`
+- **Nested collections:** Max Recursion Depth of default two, but can be adjusted with setting `maxRecursionDepth`.
 
 Unknown or unrecognized object types fall back to string formatting. Values beyond the supported nesting depth are formatted as strings. String values longer than 65,536 characters are truncated.
 
