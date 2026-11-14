@@ -6,6 +6,9 @@
     <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' AND '$(VisualStudioVersion)' &lt; '18.0' ">net471;netstandard2.0;netstandard2.1;net8.0</TargetFrameworks>
     <TargetFrameworks Condition=" '$(TargetFrameworks)' == '' ">net471;netstandard2.0;netstandard2.1;net8.0;net10.0</TargetFrameworks>
 
+    <VersionPrefix>6.2.3</VersionPrefix>
+    <PackageReleaseNotes>- Support override of MaxRecursionDepth (Default: 2) + MaxItemsPerCollection (Default: 1000)</PackageReleaseNotes>
+
     <Title>NLog.Targets.OpenTelemetryHttp</Title>
     <Description>NLog OpenTelemetryHttpTarget for sending log events to OpenTelemetry HTTP endpoint using protobuf (OTLP/HTTP).</Description>
     <Product>NLog.Targets.OpenTelemetryHttp v$(VersionPrefix)</Product>
@@ -43,10 +46,9 @@
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Net.Http" />
-    <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="8.0.0" />
   </ItemGroup>
 
-  <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' Or '$(TargetFramework)' == 'netstandard2.1' ">
+  <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' Or '$(TargetFramework)' == 'netstandard2.1' Or '$(TargetFrameworkIdentifier)' == '.NETFramework' ">
     <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="8.0.0" />
   </ItemGroup>
 
